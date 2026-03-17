@@ -15,4 +15,7 @@ def train(args):
 
 if __name__ == '__main__':
     args = get_args()
+    if args.use_wandb:
+        import wandb
+        wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args), name=args.run_name, sync_tensorboard=False)
     train(args)

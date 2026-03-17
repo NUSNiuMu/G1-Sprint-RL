@@ -13,58 +13,76 @@ from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_pat
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class TaskRegistry():
+    """ 任务注册表类，用于管理、创建环境和训练算法。
+    它负责存储环境类及其对应的配置，并提供统一的接口来实例化这些对象。
+    """
     def __init__(self):
+        """ 初始化注册表，创建用于存储任务类、环境配置和训练配置的字典。 """
         self.task_classes = {}
         self.env_cfgs = {}
         self.train_cfgs = {}
     
     def register(self, name: str, task_class: VecEnv, env_cfg: LeggedRobotCfg, train_cfg: LeggedRobotCfgPPO):
+        """ 将一个任务及其配置注册到注册表中。
+
+        Args:
+            name (str): 任务的唯一标识名称。
+            task_class (VecEnv): 环境对应的类。
+            env_cfg (LeggedRobotCfg): 环境的配置信息。
+            train_cfg (LeggedRobotCfgPPO): 训练算法（如PPO）的配置信息。
+        """
         self.task_classes[name] = task_class
         self.env_cfgs[name] = env_cfg
         self.train_cfgs[name] = train_cfg
     
     def get_task_class(self, name: str) -> VecEnv:
+        """ 根据名称获取注册的任务类。 """
         return self.task_classes[name]
     
     def get_cfgs(self, name) -> Tuple[LeggedRobotCfg, LeggedRobotCfgPPO]:
+        """ 获取指定任务的环境配置和训练配置。同时会将训练配置中的随机种子同步到环境配置中。 """
         train_cfg = self.train_cfgs[name]
         env_cfg = self.env_cfgs[name]
-        # copy seed
+        # 同步随机种子
         env_cfg.seed = train_cfg.seed
         return env_cfg, train_cfg
     
     def make_env(self, name, args=None, env_cfg=None) -> Tuple[VecEnv, LeggedRobotCfg]:
-        """ Creates an environment either from a registered namme or from the provided config file.
+        """ 根据注册名称或提供的配置创建一个环境实例。
 
         Args:
-            name (string): Name of a registered env.
-            args (Args, optional): Isaac Gym comand line arguments. If None get_args() will be called. Defaults to None.
-            env_cfg (Dict, optional): Environment config file used to override the registered config. Defaults to None.
+            name (string): 已注册的环境名称。
+            args (Args, 可选): Isaac Gym 命令行参数。如果为 None，则调用 get_args()。
+            env_cfg (Dict, 可选): 用于覆盖已注册配置的环境配置字典。
 
         Raises:
-            ValueError: Error if no registered env corresponds to 'name' 
+            ValueError: 如果找不到对应的注册环境名称。
 
         Returns:
             isaacgym.VecTaskPython: The created environment
             Dict: the corresponding config file
         """
-        # if no args passed get command line arguments
+        # 如果没有传入参数，则从命令行获取
         if args is None:
             args = get_args()
-        # check if there is a registered env with that name
+        # 检查环境是否已注册
         if name in self.task_classes:
             task_class = self.get_task_class(name)
         else:
             raise ValueError(f"Task with name: {name} was not registered")
         if env_cfg is None:
-            # load config files
+            # 加载注册的配置文件
             env_cfg, _ = self.get_cfgs(name)
-        # override cfg from args (if specified)
+        
+        # 根据命令行参数更新配置（如果指定了参数）
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
         set_seed(env_cfg.seed)
-        # parse sim params (convert to dict first)
+        
+        # 解析仿真参数（先转换为字典）
         sim_params = {"sim": class_to_dict(env_cfg.sim)}
         sim_params = parse_sim_params(args, sim_params)
+        
+        # 实例化环境类
         env = task_class(   cfg=env_cfg,
                             sim_params=sim_params,
                             physics_engine=args.physics_engine,
@@ -73,7 +91,7 @@ class TaskRegistry():
         return env, env_cfg
 
     def make_alg_runner(self, env, name=None, args=None, train_cfg=None, log_root="default") -> Tuple[OnPolicyRunner, LeggedRobotCfgPPO]:
-        """ Creates the training algorithm  either from a registered namme or from the provided config file.
+        """ 创建训练算法运行器（Runner）。
 
         Args:
             env (isaacgym.VecTaskPython): The environment to train (TODO: remove from within the algorithm)
@@ -106,6 +124,7 @@ class TaskRegistry():
         # override cfg from args (if specified)
         _, train_cfg = update_cfg_from_args(None, train_cfg, args)
 
+        # 设置日志目录
         if log_root=="default":
             log_root = os.path.join(LEGGED_GYM_ROOT_DIR, 'logs', train_cfg.runner.experiment_name)
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
@@ -114,16 +133,18 @@ class TaskRegistry():
         else:
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
         
+        # 将配置类转换为字典以适配 Runner
         train_cfg_dict = class_to_dict(train_cfg)
         runner = OnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
         #save resume path before creating a new log_dir
         resume = train_cfg.runner.resume
         if resume:
-            # load previously trained model
+            # 加载之前训练的模型权重
             resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
             print(f"Loading model from: {resume_path}")
             runner.load(resume_path)
+            
         return runner, train_cfg
 
-# make global task registry
+# 创建全局任务注册表实例
 task_registry = TaskRegistry()

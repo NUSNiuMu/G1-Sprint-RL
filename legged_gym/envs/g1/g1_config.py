@@ -2,7 +2,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class G1RoughCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.8] # x,y,z [m]
+        pos = [0.0, 0.0, 0.82] # x,y,z [m] - Safe spawn height
         default_joint_angles = { # = target angles [rad] when action = 0.0
            'left_hip_yaw_joint' : 0. ,   
            'left_hip_roll_joint' : 0,               
@@ -20,25 +20,44 @@ class G1RoughCfg( LeggedRobotCfg ):
         }
     
     class env(LeggedRobotCfg.env):
+        num_envs = 64 # Training batch size
         num_observations = 47
-        num_privileged_obs = 50
+        num_privileged_obs = 50 # 47 + 3 (lin_vel)
         num_actions = 12
 
+    class sensor:
+        class camera:
+            enable = False
+            width = 128
+            height = 72
+            position = [0.2, 0.0, 0.5] # Approx head position
+            rotation = [0.0, 0.0, 0.0] # Euler angles
+            horizontal_fov = 87.0 # RealSense D435 approx
+
+    class terrain(LeggedRobotCfg.terrain):
+        mesh_type = 'trimesh'
+        selected = True
+        terrain_kwargs = {'type': 'track_terrain', 'terrain_kwargs': {'track_width': 10.0, 'num_lanes': 8, 'lane_width': 1.22}}
+        curriculum = False
+        static_friction = 1.0
+        dynamic_friction = 1.0
+        restitution = 0.
+        terrain_length = 20.
+        terrain_width = 12.
+        num_rows = 10
+        num_cols = 10
 
     class domain_rand(LeggedRobotCfg.domain_rand):
         randomize_friction = True
-        friction_range = [0.1, 1.25]
+        friction_range = [0.5, 1.25]
         randomize_base_mass = True
         added_mass_range = [-1., 3.]
-        push_robots = True
+        push_robots = True # Enable pushing for training robustness
         push_interval_s = 5
         max_push_vel_xy = 1.5
-      
 
-    class control( LeggedRobotCfg.control ):
+    class control(LeggedRobotCfg.control):
         # PD Drive parameters:
-        control_type = 'P'
-          # PD Drive parameters:
         stiffness = {'hip_yaw': 100,
                      'hip_roll': 100,
                      'hip_pitch': 100,
@@ -56,55 +75,48 @@ class G1RoughCfg( LeggedRobotCfg ):
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
-    class asset( LeggedRobotCfg.asset ):
+    class asset(LeggedRobotCfg.asset):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/g1_description/g1_12dof.urdf'
         name = "g1"
         foot_name = "ankle_roll"
         penalize_contacts_on = ["hip", "knee"]
         terminate_after_contacts_on = ["pelvis"]
-        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
-        flip_visual_attachments = False
+        self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
+        collapse_fixed_joints = False # G1 might need fixed joints preserved for structure
+        flip_visual_attachments = False # Try disabling this if meshes are rotated wrong
+        fix_base_link = False
+        disable_gravity = False
   
-    class rewards( LeggedRobotCfg.rewards ):
+    class rewards(LeggedRobotCfg.rewards):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.78
-        
-        class scales( LeggedRobotCfg.rewards.scales ):
-            tracking_lin_vel = 1.0
+        class scales(LeggedRobotCfg.rewards.scales):
+            tracking_lin_vel = 1.5
             tracking_ang_vel = 0.5
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -1.0
-            base_height = -10.0
+            base_height = -2.0
             dof_acc = -2.5e-7
-            dof_vel = -1e-3
-            feet_air_time = 0.0
-            collision = 0.0
+            dof_vel = -2.5e-4
+            feet_air_time = 1.0
+            collision = -1.0
             action_rate = -0.01
-            dof_pos_limits = -5.0
-            alive = 0.15
-            hip_pos = -1.0
-            contact_no_vel = -0.2
-            feet_swing_height = -20.0
-            contact = 0.18
 
-class G1RoughCfgPPO( LeggedRobotCfgPPO ):
+class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class policy:
         init_noise_std = 0.8
-        actor_hidden_dims = [32]
-        critic_hidden_dims = [32]
-        activation = 'elu' # can be elu, relu, selu, crelu, lrelu, tanh, sigmoid
-        # only for 'ActorCriticRecurrent':
-        rnn_type = 'lstm'
-        rnn_hidden_size = 64
-        rnn_num_layers = 1
+        actor_hidden_dims = [512, 256, 128]
+        critic_hidden_dims = [512, 256, 128]
+        activation = 'elu'
+        # visual_obs_shape = (3, 72, 128)
         
-    class algorithm( LeggedRobotCfgPPO.algorithm ):
-        entropy_coef = 0.01
-    class runner( LeggedRobotCfgPPO.runner ):
-        policy_class_name = "ActorCriticRecurrent"
-        max_iterations = 10000
+    class runner(LeggedRobotCfgPPO.runner):
         run_name = ''
-        experiment_name = 'g1'
+        experiment_name = 'g1_blind_sprint'
+        policy_class_name = 'ActorCritic'
+        max_iterations = 5000 # 3000
+    class algorithm(LeggedRobotCfgPPO.algorithm):
+        entropy_coef = 0.01
 
   

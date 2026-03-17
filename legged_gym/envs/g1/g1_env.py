@@ -70,7 +70,9 @@ class G1Robot(LeggedRobot):
         """
         sin_phase = torch.sin(2 * np.pi * self.phase ).unsqueeze(1)
         cos_phase = torch.cos(2 * np.pi * self.phase ).unsqueeze(1)
-        self.obs_buf = torch.cat((  self.base_ang_vel  * self.obs_scales.ang_vel,
+        
+        # Proprioception
+        proprio_obs = torch.cat((  self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
                                     (self.dof_pos - self.default_dof_pos) * self.obs_scales.dof_pos,
@@ -79,7 +81,8 @@ class G1Robot(LeggedRobot):
                                     sin_phase,
                                     cos_phase
                                     ),dim=-1)
-        self.privileged_obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
+                                    
+        proprio_privileged = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
@@ -89,12 +92,66 @@ class G1Robot(LeggedRobot):
                                     sin_phase,
                                     cos_phase
                                     ),dim=-1)
-        # add perceptive inputs if not blind
-        # add noise if needed
+
+        # Add Noise to Proprio
         if self.add_noise:
+            # We need to apply noise only to proprio part.
+            # However, self.noise_scale_vec (from _get_noise_scale_vec) might be full size (27695) or proprio size?
+            # _get_noise_scale_vec uses self.obs_buf[0] size.
+            # If obs_buf is 27695, then noise_vec is 27695.
+            # But the first "proprio_dim" elements are set.
+            # So if we add noise_vec, the 0s in visual part will ensure no noise on vision.
+            # BUT we haven't concatenated yet.
+            # So we should construct full obs first.
+            pass
+
+        # Camera Observations
+        visual_obs = None
+        if hasattr(self, 'camera_handles') and len(self.camera_handles) > 0:
+             visual_obs_list = []
+             for i in range(self.num_envs):
+                 # GPU tensor access failed, switching to CPU for robustness
+                 # cam_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_COLOR)
+                 # torch_cam = gymtorch.wrap_tensor(cam_tensor)
+                 
+                 image = self.gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_COLOR)
+                 if image.shape[0] == 0:
+                     # Rendering failed or not ready
+                     if i == 0 and self.common_step_counter % 100 == 0 and not hasattr(self, 'camera_warning_printed'):
+                         print("Warning: Camera image empty. Rendering might be disabled or failing. (Suppressing further warnings)")
+                         self.camera_warning_printed = True
+                     image = np.zeros((self.cfg.sensor.camera.height, self.cfg.sensor.camera.width, 4), dtype=np.uint8)
+                 else:
+                     image = image.reshape(self.cfg.sensor.camera.height, self.cfg.sensor.camera.width, 4)
+                     
+                 torch_cam = torch.from_numpy(image).to(self.device).float() / 255.0
+                 
+                 visual_obs_list.append(torch_cam[:, :, :3].reshape(-1))
+             
+             visual_obs = torch.stack(visual_obs_list)
+        
+        # Combine
+        # If no visual_obs, we might crash if config expects it. But let's assume we have it.
+        if visual_obs is not None:
+            self.obs_buf = torch.cat((proprio_obs, visual_obs), dim=-1)
+            self.privileged_obs_buf = torch.cat((proprio_privileged, visual_obs), dim=-1)
+        else:
+            self.obs_buf = proprio_obs
+            self.privileged_obs_buf = proprio_privileged
+
+        # Add Noise
+        if self.add_noise:
+            # noise_scale_vec should match obs_buf size
+            if self.noise_scale_vec is None or self.noise_scale_vec.shape != self.obs_buf[0].shape:
+                 self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
+            
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
         
+    def _reward_tracking_lin_vel(self):
+        lin_vel_error = torch.sum(torch.square(self.commands[:, :2] - self.base_lin_vel[:, :2]), dim=1)
+        return torch.exp(-lin_vel_error / 0.25)
+
     def _reward_contact(self):
         res = torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
         for i in range(self.feet_num):

@@ -155,3 +155,51 @@ def pit_terrain(terrain, depth, platform_size=1.):
     y1 = terrain.width // 2 - platform_size
     y2 = terrain.width // 2 + platform_size
     terrain.height_field_raw[x1:x2, y1:y2] = -depth
+
+def track_terrain(terrain, track_width=10.0, num_lanes=8, lane_width=1.22, platform_size=1.):
+    # 1. Initialize with a lower height (pit/boundary)
+    terrain.height_field_raw[:] = -100 # Boundary depth
+    
+    # 2. Create the flat track in the middle (border to border along length)
+    # Center lines
+    center_y = terrain.width // 2
+    
+    # Calculate track boundaries
+    total_track_width_pixels = int(track_width / terrain.horizontal_scale)
+    start_y = center_y - total_track_width_pixels // 2
+    end_y = center_y + total_track_width_pixels // 2
+    
+    # Ensure within bounds
+    start_y = max(0, start_y)
+    end_y = min(terrain.width, end_y)
+    
+    # Set the whole track base to 0
+    terrain.height_field_raw[:, start_y:end_y] = 0
+    
+    # 3. Add lane dividers (semantics)
+    # We add small bumps to separate lanes
+    lane_width_pixels = int(lane_width / terrain.horizontal_scale)
+    marker_width_pixels = 2 # Small line width
+    
+    # We want to draw (num_lanes + 1) lines? Or just lines between lanes.
+    # Standard track has lines separating lanes.
+    # We start from one side of the track.
+    
+    # Let's align lanes to the center
+    # Calculate offset to center the set of lanes
+    total_lanes_width_pixels = num_lanes * lane_width_pixels
+    lanes_start_y = center_y - total_lanes_width_pixels // 2
+    
+    # for i in range(num_lanes + 1):
+    #     line_y = lanes_start_y + i * lane_width_pixels
+    #     # Draw a small line (raised slightly to be visible/physical)
+    #     # Height = 0.02m (2cm)
+    #     height_val = int(0.02 / terrain.vertical_scale)
+    #     
+    #     y1 = int(line_y)
+    #     y2 = min(terrain.width, y1 + marker_width_pixels)
+    #     
+    #     if y1 >= 0 and y2 <= terrain.width:
+    #          terrain.height_field_raw[:, y1:y2] = height_val
+
+
