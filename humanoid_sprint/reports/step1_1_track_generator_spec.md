@@ -46,9 +46,11 @@
 - 输出：`humanoid_sprint/reports/track_layout_preview.png`
 
 ## 当前默认跑道参数（g1_sprint_track）
-- 道数：6
+- 道数：1（每个 env 一条跑道）
 - 道宽：1.25 m
-- 道长：18.0 m
+- 道长基线：6.0 m（启用长度联动时按网格列数放大）
+- 全 env 可视化：`visualize_all_env_tracks=True`
+- env 间距：`env_spacing=14.0`（避免相邻 env 视觉重叠）
 
 ## 验证命令
 
@@ -63,10 +65,10 @@ conda run -n unitree-rl python legged_gym/scripts/train.py \
 2) 俯视图导出
 ```bash
 conda run -n unitree-rl python humanoid_sprint/scripts/plot_track_layout.py \
-  --num_lanes 6 --lane_width 1.25 --lane_length 18.0
+  --num_lanes 1 --lane_width 1.25 --lane_length 6.0
 ```
 
 ## 说明
 - 本步重点是“跑道参数化生成能力”和“可视化检查能力”。
+- 当前项目基线采用“一 env 一跑道”；如需多道测试，可通过 `num_lanes` 参数切换。
 - 语义标签（可训练感知）、越道判定与障碍逻辑将在后续步骤接入。
-

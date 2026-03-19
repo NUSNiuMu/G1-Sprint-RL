@@ -21,7 +21,7 @@
   - `terrain.track.semantic_enabled`
   - `terrain.track.semantic_boundary_tol`
 
-2) 跑道规模自动联动（满足“机器人数量->跑道规模”）
+2) 跑道规模联动参数（当前基线为“一 env 一跑道”）
 - 文件：`legged_gym/envs/base/legged_robot_config.py`
 - 新增字段：
   - `terrain.track.auto_match_num_envs`
@@ -30,7 +30,9 @@
   - `terrain.track.base_grid_cols`
 
 联动规则：
-- 道数：`num_lanes = num_envs`（当 `auto_match_num_envs=True`）
+- 道数：
+  - 当前基线：`num_lanes = 1`（`auto_match_num_envs=False`）
+  - 可选模式：`num_lanes = num_envs`（当 `auto_match_num_envs=True`）
 - 跑道长度：
   - 先取 `lane_length` 基线
   - 按 `env_grid_cols / base_grid_cols` 放大（当 `auto_scale_length_with_grid=True`）
@@ -40,6 +42,7 @@
 - `env_grid_rows=2` -> `env_grid_cols=12`
 - `base_grid_cols=6`
 - `lane_length=6` -> 实际 `track_lane_length=12`
+- `track_num_lanes=1`（每个 env 内单道）
 
 3) 运行时语义判定
 - 文件：`legged_gym/envs/base/legged_robot.py`
@@ -61,4 +64,3 @@
 ## 说明
 - 本步是“几何语义层”与“可观测语义指标”打通。
 - 真正的相机语义（RGB-D端到端识别）将在后续感知步骤接入。
-

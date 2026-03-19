@@ -64,25 +64,6 @@ class LeggedRobot(BaseTask):
             if self.device == 'cpu':
                 self.gym.fetch_results(self.sim, True)
             self.gym.refresh_dof_state_tensor(self.sim)
-            
-            # Update camera
-            self.gym.step_graphics(self.sim)
-            self.gym.render_all_camera_sensors(self.sim)
-            
-            if self.common_step_counter == 50:
-                print("Saving camera image for verification...")
-                cam_handle = self.camera_handles[0]
-                image = self.gym.get_camera_image(self.sim, self.envs[0], cam_handle, gymapi.IMAGE_COLOR)
-                if image.shape[0] > 0:
-                    import imageio
-                    h = self.cfg.sensor.camera.height
-                    w = self.cfg.sensor.camera.width
-                    image = image.reshape(h, w, 4)
-                    # Remove alpha channel for saving as PNG/JPG effectively
-                    imageio.imwrite('camera_view.png', image[:, :, :3])
-                    print("Image saved to camera_view.png")
-                else:
-                    print("Warning: Camera image empty. Skipping save.")
 
             if self.cfg.env.test:
                 elapsed_time = self.gym.get_elapsed_time(self.sim)
@@ -238,7 +219,7 @@ class LeggedRobot(BaseTask):
     def compute_observations(self):
         """ Computes observations
         """
-        proprio_obs = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
+        self.obs_buf = torch.cat((  self.base_lin_vel * self.obs_scales.lin_vel,
                                     self.base_ang_vel  * self.obs_scales.ang_vel,
                                     self.projected_gravity,
                                     self.commands[:, :3] * self.commands_scale,
@@ -249,48 +230,14 @@ class LeggedRobot(BaseTask):
         # add perceptive inputs if not blind
         # add noise if needed
         if self.add_noise:
-            proprio_obs += (2 * torch.rand_like(proprio_obs) - 1) * self.noise_scale_vec
-
-        # Camera Observations
-        # Note: We assume num_envs is small-ish (e.g. < 256) because this loop is slow
-        visual_obs_list = []
-        if hasattr(self, 'camera_handles') and len(self.camera_handles) > 0:
-             # Based on Isaac Gym python examples
-             for i in range(self.num_envs):
-                 cam_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_COLOR)
-                 # wrap
-                 torch_cam = gymtorch.wrap_tensor(cam_tensor)
-                 # shape (H, W, 4) -> Take RGB -> Flatten
-                 # We want normalized? usually 0-255 uint8. PPO needs float.
-                 # wrap_tensor shares memory? It might be float or byte.
-                 # gymapi.IMAGE_COLOR returns RGBA 8bit usually.
-                 # Let's check type. If byte, float it.
-                 # Efficiently: keep on GPU.
-                 
-                 # It's usually a View. Clone it?
-                 torch_cam = torch_cam.to(torch.float32) / 255.0
-                 visual_obs_list.append(torch_cam[:, :, :3].reshape(-1))
-             
-             visual_obs = torch.stack(visual_obs_list)
-             self.obs_buf = torch.cat((proprio_obs, visual_obs), dim=-1)
-        else:
-             self.obs_buf = proprio_obs
+            self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
 
     def create_sim(self):
         """ Creates simulation, terrain and evironments
         """
         self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
-        
-        # Force graphics device for camera sensors even if headless
-        graphics_device_id = self.graphics_device_id
-        if self.headless and hasattr(self.cfg, 'sensor') and hasattr(self.cfg.sensor, 'camera') and self.cfg.sensor.camera.enable:
-             # Use simulation device for graphics (assuming they are on same GPU)
-             # This enables offscreen rendering for sensors
-             graphics_device_id = self.sim_device_id
-             # print(f"DEBUG: Forcing graphics_device_id={graphics_device_id} for headless camera rendering")
-
-        self.sim = self.gym.create_sim(self.sim_device_id, graphics_device_id, self.physics_engine, self.sim_params)
+        self.sim = self.gym.create_sim(self.sim_device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
         self._create_ground_plane()
         self._create_envs()
 
@@ -431,7 +378,7 @@ class LeggedRobot(BaseTask):
         self.dof_pos[env_ids] = self.default_dof_pos * torch_rand_float(0.5, 1.5, (len(env_ids), self.num_dof), device=self.device)
         self.dof_vel[env_ids] = 0.
 
-        env_ids_int32 = (env_ids * self.actors_per_env).to(dtype=torch.int32)
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_dof_state_tensor_indexed(self.sim,
                                               gymtorch.unwrap_tensor(self.dof_state),
                                               gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
@@ -458,9 +405,9 @@ class LeggedRobot(BaseTask):
         # base velocities
         # self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
         self.root_states[env_ids, 7:13] = 0. # Zero initial velocity for stability
-        env_ids_int32 = (env_ids * self.actors_per_env).to(dtype=torch.int32)
+        env_ids_int32 = env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                     gymtorch.unwrap_tensor(self.all_root_states),
+                                                     gymtorch.unwrap_tensor(self.root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
     def _reset_track_positions(self, env_ids):
@@ -490,9 +437,9 @@ class LeggedRobot(BaseTask):
         max_vel = self.cfg.domain_rand.max_push_vel_xy
         self.root_states[:, 7:9] = torch_rand_float(-max_vel, max_vel, (self.num_envs, 2), device=self.device) # lin vel x/y
         
-        env_ids_int32 = (push_env_ids * self.actors_per_env).to(dtype=torch.int32)
+        env_ids_int32 = push_env_ids.to(dtype=torch.int32)
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
-                                                    gymtorch.unwrap_tensor(self.all_root_states),
+                                                    gymtorch.unwrap_tensor(self.root_states),
                                                     gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
 
    
@@ -546,26 +493,16 @@ class LeggedRobot(BaseTask):
         self.gym.refresh_net_contact_force_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.all_root_states = gymtorch.wrap_tensor(actor_root_state)
-        self.root_states = self.all_root_states
-        
-        # Handle multiple actors per env (e.g. visual assets)
-        total_actors = self.gym.get_sim_actor_count(self.sim)
-        self.actors_per_env = total_actors // self.num_envs
-        if self.actors_per_env > 1:
-             self.root_states = self.root_states.view(self.num_envs, self.actors_per_env, 13)[:, 0, :]
-        
+        self.root_states = gymtorch.wrap_tensor(actor_root_state)
+
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
         self.base_quat = self.root_states[:, 3:7]
         self.rpy = get_euler_xyz_in_tensor(self.base_quat)
-        self.base_pos = self.root_states[:self.num_envs, 0:3]
-        
-        # Handle contact forces with extra bodies
-        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, total_bodies_per_env, xyz axis
-        # Slice to keep only robot bodies (assumed first)
-        self.contact_forces = self.contact_forces[:, :self.num_bodies, :]
+        self.base_pos = self.root_states[:, 0:3]
+
+        self.contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
 
         # initialize some data used later on
         self.common_step_counter = 0
@@ -761,29 +698,6 @@ class LeggedRobot(BaseTask):
         self.actor_handles = []
         self.envs = []
         
-        # Camera sensor setup
-        self.camera_handles = []
-        camera_props = gymapi.CameraProperties()
-        if hasattr(self.cfg, 'sensor') and hasattr(self.cfg.sensor, 'camera') and self.cfg.sensor.camera.enable:
-            camera_props.width = self.cfg.sensor.camera.width
-            camera_props.height = self.cfg.sensor.camera.height
-            camera_props.enable_tensors = True
-            camera_props.horizontal_fov = self.cfg.sensor.camera.horizontal_fov
-        
-        # Track visual assets
-        track_asset_options = gymapi.AssetOptions()
-        track_asset_options.fix_base_link = True
-        
-        # Create Red Ground Asset
-        track_length = self.cfg.terrain.terrain_length
-        track_width = self.cfg.terrain.terrain_width
-        red_ground_asset = self.gym.create_box(self.sim, track_length, track_width, 0.01, track_asset_options)
-        
-        # Create White Line Asset
-        lane_width = 1.22
-        line_width = 0.05
-        white_line_asset = self.gym.create_box(self.sim, track_length, line_width, 0.02, track_asset_options)
-        
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
@@ -818,36 +732,6 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
-
-            # Add Camera
-            if hasattr(self.cfg, 'sensor') and hasattr(self.cfg.sensor, 'camera') and self.cfg.sensor.camera.enable:
-                camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
-                if camera_handle != -1:
-                    self.gym.attach_camera_to_body(camera_handle, env_handle, actor_handle, gymapi.Transform(p=gymapi.Vec3(*self.cfg.sensor.camera.position), r=gymapi.Quat.from_euler_zyx(*self.cfg.sensor.camera.rotation)), gymapi.FOLLOW_TRANSFORM)
-                elif i == 0:
-                     print("Warning: Failed to create camera sensor (handle -1). Visual observations will be zeroed.")
-                
-                self.camera_handles.append(camera_handle)
-            
-            # Add Visual Track
-            # Visual assets
-            track_pose = gymapi.Transform()
-            track_pose.p = gymapi.Vec3(0., 0., -0.01) # Slightly below
-            
-            # Use collision group -1 to disable collision (visual only)
-            red_handle = self.gym.create_actor(env_handle, red_ground_asset, track_pose, "red_ground", i, -1, 0) 
-            self.gym.set_rigid_body_color(env_handle, red_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(1, 0, 0))
-            
-            # Lines
-            num_lines = 9 # for 8 lanes
-            for l in range(num_lines):
-                 line_pose = gymapi.Transform()
-                 # Calculate y offset relative to center
-                 y_offset = (l - 4) * lane_width
-                 line_pose.p = gymapi.Vec3(0., y_offset, 0.0) # On surface
-                 
-                 line_handle = self.gym.create_actor(env_handle, white_line_asset, line_pose, f"line_{l}", i, -1, 0)
-                 self.gym.set_rigid_body_color(env_handle, line_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(1, 1, 1))
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):

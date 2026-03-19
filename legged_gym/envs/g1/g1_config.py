@@ -25,15 +25,6 @@ class G1RoughCfg( LeggedRobotCfg ):
         num_privileged_obs = 50 # 47 + 3 (lin_vel)
         num_actions = 12
 
-    class sensor:
-        class camera:
-            enable = False
-            width = 128
-            height = 72
-            position = [0.2, 0.0, 0.5] # Approx head position
-            rotation = [0.0, 0.0, 0.0] # Euler angles
-            horizontal_fov = 87.0 # RealSense D435 approx
-
     class terrain(LeggedRobotCfg.terrain):
         mesh_type = 'trimesh'
         selected = True
@@ -106,16 +97,19 @@ class G1RoughCfg( LeggedRobotCfg ):
 class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class policy:
         init_noise_std = 0.8
-        actor_hidden_dims = [512, 256, 128]
-        critic_hidden_dims = [512, 256, 128]
+        actor_hidden_dims = [32]
+        critic_hidden_dims = [32]
         activation = 'elu'
-        # visual_obs_shape = (3, 72, 128)
+        # only for 'ActorCriticRecurrent':
+        rnn_type = 'lstm'
+        rnn_hidden_size = 64
+        rnn_num_layers = 1
         
     class runner(LeggedRobotCfgPPO.runner):
         run_name = ''
-        experiment_name = 'g1_blind_sprint'
-        policy_class_name = 'ActorCritic'
-        max_iterations = 5000 # 3000
+        experiment_name = 'g1'
+        policy_class_name = "ActorCriticRecurrent"
+        max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
         entropy_coef = 0.01
 
@@ -146,5 +140,6 @@ class G1SprintTrackCfg(G1RoughCfg):
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):
         experiment_name = "g1_sprint_track"
+        policy_class_name = "ActorCriticRecurrent"
 
   

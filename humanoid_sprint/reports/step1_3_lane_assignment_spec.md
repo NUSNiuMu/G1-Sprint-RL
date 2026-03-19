@@ -24,7 +24,7 @@
   - 不再使用全局 `[-1, 1]` 的横向随机扰动
 
 4) 跑道规模联动（延续 Step 1.2）
-- `auto_match_num_envs=True` 时：`num_lanes=num_envs`
+- 当前基线：`num_lanes=1`，`auto_match_num_envs=False`
 - `auto_scale_length_with_grid=True` 时：长度按网格列数比例放大
 
 ## 新增配置参数
@@ -34,10 +34,9 @@
 ## 新增日志检查字段
 - `track_lane_assignment_coverage`
   - 覆盖率 = 实际被分配的不同 lane 数 / 总 lane 数
-  - `1.0` 表示每个 lane 都至少有一个机器人分配（在 `num_lanes=num_envs` 时即一一对应）
+  - 在当前单道配置下，覆盖率应稳定为 `1.0`
 
 ## 验证目标（24 机器人案例）
-- `track_num_lanes = 24`
+- `track_num_lanes = 1`
 - `track_lane_length = 12`
 - `track_lane_assignment_coverage = 1.0`
-
