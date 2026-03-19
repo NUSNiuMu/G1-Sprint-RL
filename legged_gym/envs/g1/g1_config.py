@@ -165,7 +165,9 @@ class G1SprintTrackCfg(G1RoughCfg):
             collision = -0.2
             action_rate = -0.005
             stand_still = -0.02
-            lane_centering = 1.0
+            lane_centering = 1.6
+            lane_offset = -0.8
+            lane_boundary = -0.6
             termination = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
