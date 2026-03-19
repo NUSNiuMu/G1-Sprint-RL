@@ -450,16 +450,10 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): ids of environments being reset
         """
-        # If tracking is good enough, expand command range with configurable step.
-        threshold = getattr(self.cfg.commands, "curriculum_threshold", 0.8)
-        step = getattr(self.cfg.commands, "curriculum_step", 0.5)
-        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > threshold * self.reward_scales["tracking_lin_vel"]:
-            if getattr(self.cfg.commands, "forward_curriculum_only", False):
-                self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0], 0., self.cfg.commands.max_curriculum)
-                self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + step, 0., self.cfg.commands.max_curriculum)
-            else:
-                self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - step, -self.cfg.commands.max_curriculum, 0.)
-                self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + step, 0., self.cfg.commands.max_curriculum)
+        # If the tracking reward is above 80% of the maximum, increase the range of commands
+        if torch.mean(self.episode_sums["tracking_lin_vel"][env_ids]) / self.max_episode_length > 0.8 * self.reward_scales["tracking_lin_vel"]:
+            self.command_ranges["lin_vel_x"][0] = np.clip(self.command_ranges["lin_vel_x"][0] - 0.5, -self.cfg.commands.max_curriculum, 0.)
+            self.command_ranges["lin_vel_x"][1] = np.clip(self.command_ranges["lin_vel_x"][1] + 0.5, 0., self.cfg.commands.max_curriculum)
 
 
     def _get_noise_scale_vec(self, cfg):
@@ -954,22 +948,3 @@ class LeggedRobot(BaseTask):
         center_error = local_y - self.env_lane_center_y
         lane_sigma = max(0.1, 0.5 * float(self.track_layout["lane_width"]))
         return torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
-
-    def _reward_lane_offset(self):
-        """Penalize lateral offset from lane centerline (oracle signal)."""
-        if self.track_layout is None:
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-        center_error = local_y - self.env_lane_center_y
-        return center_error ** 2
-
-    def _reward_lane_boundary(self):
-        """Penalize getting too close to lane boundaries (and leaving the lane)."""
-        if self.track_layout is None:
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-        left = float(self.track_layout["left_boundary"])
-        right = float(self.track_layout["right_boundary"])
-        edge_clearance = torch.minimum(local_y - left, right - local_y)
-        margin = max(0.05, 0.15 * float(self.track_layout["lane_width"]))
-        return torch.clamp((margin - edge_clearance) / margin, min=0.0)
