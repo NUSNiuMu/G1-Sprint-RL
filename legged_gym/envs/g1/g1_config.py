@@ -119,4 +119,32 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class algorithm(LeggedRobotCfgPPO.algorithm):
         entropy_coef = 0.01
 
+class G1SprintTrackCfg(G1RoughCfg):
+    class env(G1RoughCfg.env):
+        # Keep each env visually separated in the global viewer.
+        env_spacing = 14.0
+
+    class terrain(G1RoughCfg.terrain):
+        mesh_type = "plane"
+        curriculum = False
+        class track(G1RoughCfg.terrain.track):
+            enabled = True
+            visualize_all_env_tracks = True
+            num_lanes = 1
+            lane_width = 1.25
+            lane_length = 6.0
+            auto_match_num_envs = False
+            auto_scale_length_with_grid = True
+            env_grid_rows = 2
+            base_grid_cols = 6
+            boundary_width = 0.08
+            separator_width = 0.04
+            curb_height = 0.025
+            lane_mark_height = 0.006
+
+
+class G1SprintTrackCfgPPO(G1RoughCfgPPO):
+    class runner(G1RoughCfgPPO.runner):
+        experiment_name = "g1_sprint_track"
+
   

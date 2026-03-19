@@ -2,7 +2,7 @@ from .base_config import BaseConfig
 
 class LeggedRobotCfg(BaseConfig):
     class env:
-        num_envs = 4096
+        num_envs = 24
         num_observations = 48
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
@@ -35,6 +35,26 @@ class LeggedRobotCfg(BaseConfig):
         terrain_proportions = [0.1, 0.1, 0.35, 0.25, 0.2]
         # trimesh only:
         slope_treshold = 0.75 # slopes above this threshold will be corrected to vertical surfaces
+        class track:
+            enabled = False
+            visualize_in_viewer = True
+            visualize_all_env_tracks = False
+            num_lanes = 4
+            lane_width = 1.2
+            lane_length = 14.0
+            auto_match_num_envs = False
+            auto_scale_length_with_grid = False
+            env_grid_rows = 0
+            base_grid_cols = 6
+            lane_assignment_offset = 0
+            spawn_x_jitter = 0.8
+            spawn_y_margin = 0.05
+            boundary_width = 0.06
+            separator_width = 0.04
+            curb_height = 0.02
+            lane_mark_height = 0.005
+            semantic_enabled = True
+            semantic_boundary_tol = 0.03
 
     class commands:
         curriculum = False

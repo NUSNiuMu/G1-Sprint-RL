@@ -5,7 +5,6 @@ import sys
 from legged_gym import LEGGED_GYM_ROOT_DIR
 
 import isaacgym
-from isaacgym import gymapi
 from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
 
@@ -40,36 +39,19 @@ def play(args):
         export_policy_as_jit(ppo_runner.alg.actor_critic, path)
         print('Exported policy as jit script to: ', path)
 
-    # Video recording
-    import imageio
-    video_path = os.path.join(LEGGED_GYM_ROOT_DIR, 'play.mp4')
-    video = imageio.get_writer(video_path, fps=30)
-    print(f"Recording video to {video_path}")
+    logger = Logger(env.dt)
+    stop_rew_log = env.max_episode_length + 1
 
     for i in range(10*int(env.max_episode_length)):
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
-        
-        if i % 50 == 0:
-            # Check base state (assumes root_states is available or obs contains it)
-            # Obs layout for G1: 0-2 lin vel, 3-5 ang vel, 6-8 proj grav, 9-44 commands/dof
-            # We can't easily get exact pos from obs, but we can check if obs changes
-            pass 
-            # Better to rely on visual or just completion. 
-            # Actually, let's print a simple "Step {i}" to confirm it runs.
-            print(f"Sim Step {i}")
-        
-        # Capture Camera
-        if hasattr(env, 'camera_handles') and len(env.camera_handles) > 0:
-            img = env.gym.get_camera_image(env.sim, env.envs[0], env.camera_handles[0], gymapi.IMAGE_COLOR)
-            if img.shape[0] > 0:
-                h, w = env.cfg.sensor.camera.height, env.cfg.sensor.camera.width
-                img = img.reshape(h, w, 4)
-                img = img[:, :, :3] # Remove alpha
-                video.append_data(img)
-            
-    video.close()
-    print("Done recording")
+        if 0 < i < stop_rew_log:
+            if infos["episode"]:
+                num_episodes = torch.sum(env.reset_buf).item()
+                if num_episodes > 0:
+                    logger.log_rewards(infos["episode"], num_episodes)
+        elif i == stop_rew_log:
+            logger.print_rewards()
 
 if __name__ == '__main__':
     EXPORT_POLICY = True

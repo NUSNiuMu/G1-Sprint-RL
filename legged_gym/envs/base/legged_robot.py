@@ -124,7 +124,9 @@ class LeggedRobot(BaseTask):
         self._post_physics_step_callback()
 
         # compute observations, rewards, resets, ...
-        # self.check_termination()
+        self.check_termination()
+        self._update_track_semantics()
+        self._update_episode_metrics()
         self.compute_reward()
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids)
@@ -137,21 +139,15 @@ class LeggedRobot(BaseTask):
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+        if self.cfg.terrain.track.enabled and self.cfg.terrain.track.visualize_in_viewer and not self.headless:
+            self._draw_track_debug_lines()
 
     def check_termination(self):
         """ Check if environments need to be reset
         """
-        # DEBUG: Check termination cause
-        contact_term = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
-        orientation_term = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
-        
-        # if torch.any(contact_term):
-        #      print(f"DEBUG: Contact Termination! indices: {self.termination_contact_indices}")
-        #      # Check which body caused it?
-        # if torch.any(orientation_term):
-        #      print(f"DEBUG: Orientation Termination! RPY: {self.rpy[0]}")
-
-        self.reset_buf = contact_term | orientation_term
+        self.contact_termination_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
+        self.attitude_termination_buf = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
+        self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
         self.reset_buf |= self.time_out_buf
 
@@ -189,11 +185,36 @@ class LeggedRobot(BaseTask):
         for key in self.episode_sums.keys():
             self.extras["episode"]['rew_' + key] = torch.mean(self.episode_sums[key][env_ids]) / self.max_episode_length_s
             self.episode_sums[key][env_ids] = 0.
+        ep_steps = torch.clamp(self.metric_episode_steps[env_ids], min=1.0)
+        self.extras["episode"]["metric_speed_mps"] = torch.mean(self.metric_speed_sum[env_ids] / ep_steps)
+        self.extras["episode"]["metric_collision_rate"] = torch.mean(self.metric_collision_steps[env_ids] / ep_steps)
+        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.time_out_buf[env_ids]).float())
+        self.extras["episode"]["metric_success_rate"] = torch.mean(self.time_out_buf[env_ids].float())
+        self.extras["episode"]["metric_torque_utilization"] = torch.mean(self.metric_torque_util_sum[env_ids] / ep_steps)
+        self.extras["episode"]["metric_torque_violation_rate"] = torch.mean(self.metric_torque_violation_steps[env_ids] / ep_steps)
+        self.extras["episode"]["metric_lane_violation_rate"] = torch.mean(self.metric_lane_violation_steps[env_ids] / ep_steps)
+        self.extras["episode"]["metric_obstacle_avoid_rate"] = torch.mean(self.metric_obstacle_avoid_sum[env_ids] / ep_steps)
+        self.extras["episode"]["semantic_lane_ratio"] = torch.mean(self.metric_semantic_lane_steps[env_ids] / ep_steps)
+        self.extras["episode"]["semantic_boundary_ratio"] = torch.mean(self.metric_semantic_boundary_steps[env_ids] / ep_steps)
+        self.extras["episode"]["semantic_non_track_ratio"] = torch.mean(self.metric_lane_violation_steps[env_ids] / ep_steps)
+        if self.track_layout is not None:
+            self.extras["episode"]["track_num_lanes"] = float(self.track_layout["num_lanes"])
+            self.extras["episode"]["track_lane_length"] = float(self.track_layout["lane_length"])
+            self.extras["episode"]["track_lane_assignment_coverage"] = float(torch.unique(self.env_lane_ids).numel()) / float(self.track_layout["num_lanes"])
         if self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
+        self.metric_episode_steps[env_ids] = 0.
+        self.metric_speed_sum[env_ids] = 0.
+        self.metric_collision_steps[env_ids] = 0.
+        self.metric_torque_util_sum[env_ids] = 0.
+        self.metric_torque_violation_steps[env_ids] = 0.
+        self.metric_lane_violation_steps[env_ids] = 0.
+        self.metric_obstacle_avoid_sum[env_ids] = 0.
+        self.metric_semantic_lane_steps[env_ids] = 0.
+        self.metric_semantic_boundary_steps[env_ids] = 0.
     
     def compute_reward(self):
         """ Compute rewards
@@ -425,10 +446,15 @@ class LeggedRobot(BaseTask):
         if self.custom_origins:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
-            self.root_states[env_ids, :2] += torch_rand_float(-1., 1., (len(env_ids), 2), device=self.device) # xy position within 1m of the center
+            if self.track_layout is None:
+                self.root_states[env_ids, :2] += torch_rand_float(-1., 1., (len(env_ids), 2), device=self.device) # xy position within 1m of the center
+            else:
+                self._reset_track_positions(env_ids)
         else:
             self.root_states[env_ids] = self.base_init_state
             self.root_states[env_ids, :3] += self.env_origins[env_ids]
+            if self.track_layout is not None:
+                self._reset_track_positions(env_ids)
         # base velocities
         # self.root_states[env_ids, 7:13] = torch_rand_float(-0.5, 0.5, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
         self.root_states[env_ids, 7:13] = 0. # Zero initial velocity for stability
@@ -436,6 +462,23 @@ class LeggedRobot(BaseTask):
         self.gym.set_actor_root_state_tensor_indexed(self.sim,
                                                      gymtorch.unwrap_tensor(self.all_root_states),
                                                      gymtorch.unwrap_tensor(env_ids_int32), len(env_ids_int32))
+
+    def _reset_track_positions(self, env_ids):
+        lane_center_y = self.env_lane_center_y[env_ids]
+        x_jitter = min(self.cfg.terrain.track.spawn_x_jitter, 0.25 * self.track_layout["lane_length"])
+        y_jitter_limit = max(
+            0.0,
+            0.5 * self.track_layout["lane_width"]
+            - max(self.cfg.terrain.track.boundary_width, self.cfg.terrain.track.separator_width)
+            - self.cfg.terrain.track.spawn_y_margin,
+        )
+        x_jitter_tensor = torch_rand_float(-x_jitter, x_jitter, (len(env_ids), 1), device=self.device).squeeze(1)
+        if y_jitter_limit > 0.0:
+            y_jitter_tensor = torch_rand_float(-y_jitter_limit, y_jitter_limit, (len(env_ids), 1), device=self.device).squeeze(1)
+        else:
+            y_jitter_tensor = torch.zeros(len(env_ids), device=self.device)
+        self.root_states[env_ids, 0] += x_jitter_tensor
+        self.root_states[env_ids, 1] += lane_center_y + y_jitter_tensor
 
     def _push_robots(self):
         """ Random pushes the robots. Emulates an impulse by setting a randomized base velocity. 
@@ -544,6 +587,18 @@ class LeggedRobot(BaseTask):
         self.base_lin_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.metric_episode_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_speed_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_collision_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_torque_util_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_torque_violation_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_lane_violation_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_obstacle_avoid_sum = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_semantic_lane_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.metric_semantic_boundary_steps = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.track_semantic_id_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
+        self.contact_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.attitude_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
       
 
         # joint positions offsets and PD gains
@@ -589,6 +644,53 @@ class LeggedRobot(BaseTask):
         # reward episode sums
         self.episode_sums = {name: torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
                              for name in self.reward_scales.keys()}
+
+    def _update_episode_metrics(self):
+        # episode-local counters used for sprint KPI logging
+        self.metric_episode_steps += 1.
+        self.metric_speed_sum += torch.abs(self.base_lin_vel[:, 0])
+        torque_util = torch.mean(torch.abs(self.torques) / (self.torque_limits.unsqueeze(0) + 1e-6), dim=1)
+        self.metric_torque_util_sum += torque_util
+        torque_limit = self.cfg.rewards.soft_torque_limit * self.torque_limits.unsqueeze(0)
+        torque_violation = torch.any(torch.abs(self.torques) > torque_limit, dim=1)
+        self.metric_torque_violation_steps += torque_violation.float()
+        if len(self.penalised_contact_indices) > 0:
+            collision_step = torch.any(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 1., dim=1)
+            self.metric_collision_steps += collision_step.float()
+        # obstacle metric placeholder (will be activated in Step 4.x)
+        self.metric_obstacle_avoid_sum += 0.
+
+    def _update_track_semantics(self):
+        if self.track_layout is None or not self.cfg.terrain.track.semantic_enabled:
+            return
+        local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        half_length = 0.5 * self.track_layout["lane_length"]
+        in_longitudinal = torch.abs(local_x) <= half_length
+        left = self.track_layout["left_boundary"]
+        right = self.track_layout["right_boundary"]
+        in_lateral = torch.logical_and(local_y >= left, local_y <= right)
+        on_track = torch.logical_and(in_longitudinal, in_lateral)
+
+        boundary_tol = max(
+            0.5 * self.cfg.terrain.track.boundary_width,
+            0.5 * self.cfg.terrain.track.separator_width,
+            self.cfg.terrain.track.semantic_boundary_tol,
+        )
+        boundary_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        for y_boundary in self.track_layout["lane_boundaries"]:
+            boundary_mask |= torch.abs(local_y - y_boundary) <= boundary_tol
+        boundary_mask &= on_track
+        lane_mask = on_track & (~boundary_mask)
+
+        # semantic id: 0 non-track, 1 lane interior, 2 boundary/line
+        self.track_semantic_id_buf[:] = 0
+        self.track_semantic_id_buf[lane_mask] = 1
+        self.track_semantic_id_buf[boundary_mask] = 2
+
+        self.metric_lane_violation_steps += (~on_track).float()
+        self.metric_semantic_lane_steps += lane_mask.float()
+        self.metric_semantic_boundary_steps += boundary_mask.float()
 
     def _create_ground_plane(self):
         """ Adds a ground plane to the simulation, sets friction and restitution based on the cfg.
@@ -653,6 +755,7 @@ class LeggedRobot(BaseTask):
         start_pose.p = gymapi.Vec3(*self.base_init_state[:3])
 
         self._get_env_origins()
+        self._build_track_layout()
         env_lower = gymapi.Vec3(0., 0., 0.)
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
@@ -684,8 +787,25 @@ class LeggedRobot(BaseTask):
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))
-            pos = self.env_origins[i].clone()
-            pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
+            env_center = self.env_origins[i].clone()
+            pos = env_center.clone()
+            if self.track_layout is None:
+                pos[:2] += torch_rand_float(-1., 1., (2,1), device=self.device).squeeze(1)
+            else:
+                x_jitter = min(self.cfg.terrain.track.spawn_x_jitter, 0.25 * self.track_layout["lane_length"])
+                y_jitter_limit = max(
+                    0.0,
+                    0.5 * self.track_layout["lane_width"]
+                    - max(self.cfg.terrain.track.boundary_width, self.cfg.terrain.track.separator_width)
+                    - self.cfg.terrain.track.spawn_y_margin,
+                )
+                x_jitter_val = float(torch_rand_float(-x_jitter, x_jitter, (1, 1), device=self.device).item())
+                if y_jitter_limit > 0.0:
+                    y_jitter_val = float(torch_rand_float(-y_jitter_limit, y_jitter_limit, (1, 1), device=self.device).item())
+                else:
+                    y_jitter_val = 0.0
+                pos[0] += x_jitter_val
+                pos[1] += self.env_lane_center_y[i] + y_jitter_val
             start_pose.p = gymapi.Vec3(*pos)
                 
             rigid_shape_props = self._process_rigid_shape_props(rigid_shape_props_asset, i)
@@ -740,6 +860,76 @@ class LeggedRobot(BaseTask):
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(termination_contact_names)):
             self.termination_contact_indices[i] = self.gym.find_actor_rigid_body_handle(self.envs[0], self.actor_handles[0], termination_contact_names[i])
+
+    def _build_track_layout(self):
+        if not self.cfg.terrain.track.enabled:
+            self.track_layout = None
+            return
+        num_lanes = int(self.cfg.terrain.track.num_lanes)
+        if self.cfg.terrain.track.auto_match_num_envs:
+            num_lanes = int(self.num_envs)
+        lane_width = self.cfg.terrain.track.lane_width
+        lane_length = self.cfg.terrain.track.lane_length
+        if self.cfg.terrain.track.auto_scale_length_with_grid:
+            env_grid_rows = int(self.cfg.terrain.track.env_grid_rows)
+            if env_grid_rows > 0:
+                env_grid_cols = int(np.ceil(self.num_envs / env_grid_rows))
+            else:
+                env_grid_cols = int(np.floor(np.sqrt(self.num_envs)))
+            base_cols = max(1, int(self.cfg.terrain.track.base_grid_cols))
+            lane_length *= max(1.0, float(env_grid_cols) / float(base_cols))
+        total_track_width = lane_width * num_lanes
+        left_boundary = -0.5 * total_track_width
+        lane_centers = [left_boundary + (i + 0.5) * lane_width for i in range(num_lanes)]
+        lane_boundaries = [left_boundary + i * lane_width for i in range(num_lanes + 1)]
+        lane_offset = int(self.cfg.terrain.track.lane_assignment_offset)
+        if self.cfg.terrain.track.auto_match_num_envs:
+            lane_offset = num_lanes // 2
+        lane_ids = (np.arange(self.num_envs, dtype=np.int64) + lane_offset) % num_lanes
+        env_lane_center_y = np.array([lane_centers[idx] for idx in lane_ids], dtype=np.float32)
+        self.track_layout = {
+            "num_lanes": num_lanes,
+            "lane_width": lane_width,
+            "lane_length": lane_length,
+            "lane_centers": lane_centers,
+            "lane_boundaries": lane_boundaries,
+            "left_boundary": lane_boundaries[0],
+            "right_boundary": lane_boundaries[-1],
+            "semantic_ids": {"non_track": 0, "lane": 1, "boundary": 2},
+        }
+        self.env_lane_ids = torch.from_numpy(lane_ids).to(self.device)
+        self.env_lane_center_y = torch.from_numpy(env_lane_center_y).to(self.device)
+
+    def _draw_track_debug_lines(self):
+        if self.track_layout is None:
+            return
+        half_length = 0.5 * self.track_layout["lane_length"]
+        z = 0.03
+        self.gym.clear_lines(self.viewer)
+        draw_env_ids = list(range(len(self.envs))) if self.cfg.terrain.track.visualize_all_env_tracks else [int(self.cfg.viewer.ref_env)]
+        for env_id in draw_env_ids:
+            if env_id < 0 or env_id >= len(self.envs):
+                continue
+            env_handle = self.envs[env_id]
+            center = self.env_origins[env_id]
+            vertices = []
+            colors = []
+            for i, y_offset in enumerate(self.track_layout["lane_boundaries"]):
+                x0 = float(center[0] - half_length)
+                x1 = float(center[0] + half_length)
+                y = float(center[1] + y_offset)
+                vertices.extend([x0, y, z, x1, y, z])
+                if i == 0 or i == len(self.track_layout["lane_boundaries"]) - 1:
+                    colors.extend([1.0, 1.0, 1.0])
+                else:
+                    colors.extend([0.95, 0.95, 0.2])
+            self.gym.add_lines(
+                self.viewer,
+                env_handle,
+                len(self.track_layout["lane_boundaries"]),
+                np.array(vertices, dtype=np.float32),
+                np.array(colors, dtype=np.float32),
+            )
 
     def _get_env_origins(self):
         """ Sets environment origins. On rough terrain the origins are defined by the terrain platforms.
