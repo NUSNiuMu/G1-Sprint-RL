@@ -137,11 +137,11 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_mark_height = 0.006
 
     class commands(G1RoughCfg.commands):
-        # Step 2.1 baseline: no visual input, straight sprint command.
+        # Step 2.1 stability phase: stand in-lane first, then walk/run later.
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.6, 1.2]
+            lin_vel_x = [0.0, 0.0]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -154,17 +154,19 @@ class G1SprintTrackCfg(G1RoughCfg):
 
     class rewards(G1RoughCfg.rewards):
         class scales(G1RoughCfg.rewards.scales):
-            tracking_lin_vel = 2.0
+            # Keep a small tracking term at zero command, prioritize stability.
+            tracking_lin_vel = 1.0
             tracking_ang_vel = 0.0
-            orientation = -1.0
-            base_height = -3.0
+            orientation = -0.5
+            base_height = -1.5
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.5
-            collision = -1.0
-            action_rate = -0.02
+            feet_air_time = 0.0
+            collision = -0.2
+            action_rate = -0.005
+            stand_still = -0.1
             lane_centering = 1.0
-            termination = -5.0
+            termination = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):
