@@ -139,15 +139,15 @@ class G1SprintTrackCfg(G1RoughCfg):
     class commands(G1RoughCfg.commands):
         # Step 2.2 speed curriculum: increase forward speed range gradually.
         curriculum = True
-        max_curriculum = 1.2
+        max_curriculum = 1.6
         curriculum_step = 0.1
-        curriculum_threshold = 0.75
+        curriculum_threshold = 0.70
         forward_curriculum_only = True
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
             # Keep min > 0.2 because small commands are zeroed in _resample_commands().
-            lin_vel_x = [0.2, 0.4]
+            lin_vel_x = [0.3, 0.7]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -161,7 +161,7 @@ class G1SprintTrackCfg(G1RoughCfg):
     class rewards(G1RoughCfg.rewards):
         class scales(G1RoughCfg.rewards.scales):
             # Increase forward-motion incentive while keeping posture constraints.
-            tracking_lin_vel = 2.0
+            tracking_lin_vel = 2.5
             tracking_ang_vel = 0.0
             orientation = -0.5
             base_height = -1.5
@@ -170,10 +170,10 @@ class G1SprintTrackCfg(G1RoughCfg):
             feet_air_time = 0.2
             collision = -0.2
             action_rate = -0.005
-            stand_still = -0.02
-            lane_centering = 2.5
-            lane_offset = -2.0
-            lane_boundary = -1.5
+            stand_still = -0.01
+            lane_centering = 1.8
+            lane_offset = -0.8
+            lane_boundary = -0.6
             termination = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
