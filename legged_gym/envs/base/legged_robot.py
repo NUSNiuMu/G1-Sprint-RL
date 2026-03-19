@@ -954,3 +954,22 @@ class LeggedRobot(BaseTask):
         center_error = local_y - self.env_lane_center_y
         lane_sigma = max(0.1, 0.5 * float(self.track_layout["lane_width"]))
         return torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
+
+    def _reward_lane_offset(self):
+        """Penalize lateral offset from lane centerline (oracle signal)."""
+        if self.track_layout is None:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        center_error = local_y - self.env_lane_center_y
+        return center_error ** 2
+
+    def _reward_lane_boundary(self):
+        """Penalize getting too close to lane boundaries (and leaving the lane)."""
+        if self.track_layout is None:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        left = float(self.track_layout["left_boundary"])
+        right = float(self.track_layout["right_boundary"])
+        edge_clearance = torch.minimum(local_y - left, right - local_y)
+        margin = max(0.05, 0.15 * float(self.track_layout["lane_width"]))
+        return torch.clamp((margin - edge_clearance) / margin, min=0.0)
