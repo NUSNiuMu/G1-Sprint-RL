@@ -137,11 +137,11 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_mark_height = 0.006
 
     class commands(G1RoughCfg.commands):
-        # Step 2.1 walking phase: keep stable while starting forward motion.
+        # Running target: prioritize forward sprint speed.
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.1, 0.4]
+            lin_vel_x = [0.6, 1.2]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -155,13 +155,13 @@ class G1SprintTrackCfg(G1RoughCfg):
     class rewards(G1RoughCfg.rewards):
         class scales(G1RoughCfg.rewards.scales):
             # Increase forward-motion incentive while keeping posture constraints.
-            tracking_lin_vel = 1.8
+            tracking_lin_vel = 2.4
             tracking_ang_vel = 0.0
             orientation = -0.5
             base_height = -1.5
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.2
+            feet_air_time = 0.4
             collision = -0.2
             action_rate = -0.005
             stand_still = -0.02
