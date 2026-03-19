@@ -15,6 +15,13 @@ def train(args):
 
 if __name__ == '__main__':
     args = get_args()
+    # Auto-enable W&B for sprint task so default launch command needs no extra flags.
+    if args.task == "g1_sprint_track":
+        args.use_wandb = True
+        if args.wandb_project == "legged_gym":
+            args.wandb_project = "g1_sprint_track"
+        if args.wandb_entity is None:
+            args.wandb_entity = "1361660951-national-university-of-singapore-students-union"
     if args.use_wandb:
         import wandb
         wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args), name=args.run_name, sync_tensorboard=False)
