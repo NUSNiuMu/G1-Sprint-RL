@@ -136,6 +136,35 @@ class G1SprintTrackCfg(G1RoughCfg):
             curb_height = 0.025
             lane_mark_height = 0.006
 
+    class commands(G1RoughCfg.commands):
+        # Step 2.1 baseline: no visual input, straight sprint command.
+        heading_command = False
+        resampling_time = 10.0
+        class ranges(G1RoughCfg.commands.ranges):
+            lin_vel_x = [0.6, 1.2]
+            lin_vel_y = [0.0, 0.0]
+            ang_vel_yaw = [0.0, 0.0]
+            heading = [0.0, 0.0]
+
+    class domain_rand(G1RoughCfg.domain_rand):
+        # Step 2.1 focuses on a stable locomotion baseline first.
+        randomize_friction = False
+        randomize_base_mass = False
+        push_robots = False
+
+    class rewards(G1RoughCfg.rewards):
+        class scales(G1RoughCfg.rewards.scales):
+            tracking_lin_vel = 2.0
+            tracking_ang_vel = 0.0
+            orientation = -1.0
+            base_height = -3.0
+            dof_vel = -2.0e-4
+            dof_acc = -2.5e-7
+            feet_air_time = 0.5
+            collision = -1.0
+            action_rate = -0.02
+            lane_centering = 1.0
+            termination = -5.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):

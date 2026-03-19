@@ -936,3 +936,15 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+
+    def _reward_lane_centering(self):
+        """Oracle lane-keeping reward used in Step 2.1 baseline.
+
+        Encourages the base to stay close to the assigned lane centerline.
+        """
+        if self.track_layout is None:
+            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        center_error = local_y - self.env_lane_center_y
+        lane_sigma = max(0.1, 0.5 * float(self.track_layout["lane_width"]))
+        return torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
