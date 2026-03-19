@@ -1,0 +1,39 @@
+Step 2.2 速度课程学习报告
+生成时间：2026-03-19
+状态：已启动实现（提速课程参数已落地）
+
+一、目标
+- 在 Step2.1 稳定基线上开始提速，不一次性给高速目标，改为课程式提升。
+
+二、本步改动
+1) 课程配置（g1_sprint_track）
+- 文件：/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/g1/g1_config.py
+- 关键参数：
+  - commands.curriculum=True
+  - commands.max_curriculum=1.2
+  - commands.curriculum_step=0.1
+  - commands.curriculum_threshold=0.75
+  - commands.forward_curriculum_only=True
+  - lin_vel_x 初始范围改为 [0.2, 0.4]
+
+2) 课程逻辑增强（前向专用）
+- 文件：/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/base/legged_robot.py
+- update_command_curriculum() 支持 forward_curriculum_only：
+  - 只抬升前向上限，避免出现负向速度采样。
+
+3) 通用课程参数扩展
+- 文件：/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/base/legged_robot_config.py
+- 新增课程字段（step/threshold/forward_only）。
+
+4) 奖励调整
+- tracking_lin_vel: 1.8 -> 2.0
+
+三、关键说明
+- 当前代码会将较小平面命令清零（|cmd_xy|<=0.2）。
+- 因此 Step2.2 初始速度下限设置为 0.2，确保前进命令生效。
+
+四、验证命令
+- `python3 legged_gym/scripts/train.py --task=g1_sprint_track --num_envs=1024 --headless`
+
+五、下一步观测重点
+- W&B 关注：`episode/max_command_x`、`metric_speed_mps`、`metric_fall_rate`。
