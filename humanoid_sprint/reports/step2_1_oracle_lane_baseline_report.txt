@@ -1,0 +1,47 @@
+Step 2.1 无视觉基线任务（Oracle Lane）完成报告
+生成时间：2026-03-19
+状态：已完成（经用户确认）
+
+一、阶段目标
+- 在不接入视觉（仅本体状态）的前提下，先建立跑道内可稳定站立/低速前进的基线。
+- 使用已知跑道中心线（oracle）提供 lane 约束，为后续速度课程与视觉接入打基础。
+
+二、本步最终实现
+1) Oracle 跑道居中奖励
+- 文件：/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/base/legged_robot.py
+- 函数：`_reward_lane_centering()`
+- 作用：根据机体横向偏差给高斯奖励，鼓励机器人靠近 lane 中心线。
+
+2) Step 2.1 基线训练配置（g1_sprint_track）
+- 文件：/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/g1/g1_config.py
+- 采用一 env 一跑道，track 语义延续 Step1 方案。
+- 采用 Recurrent 策略：ActorCriticRecurrent（LSTM 64）。
+- 本步完成阶段的有效配置分两段：
+  - 站稳阶段：`lin_vel_x=[0.0,0.0]`，重点稳定站立与 lane 约束。
+  - 低速前进阶段：`lin_vel_x=[0.1,0.4]`，提高 `tracking_lin_vel` 并降低 `stand_still` 约束，开始小速度前进。
+
+3) 奖励结构（完成版）
+- 速度：`tracking_lin_vel=1.8`
+- 稳定：`orientation=-0.5`、`base_height=-1.5`
+- 平滑：`action_rate=-0.005`、`dof_vel=-2e-4`、`dof_acc=-2.5e-7`
+- 接触/终止：`collision=-0.2`、`termination=-1.0`
+- 跑道约束：`lane_centering=1.0`
+- 静止约束：`stand_still=-0.02`
+
+三、训练与观测结论（W&B）
+- 已出现可稳定站立 run（历史 run：`jqu52hcs`，`metric_fall_rate=0`，`metric_success_rate=1`）。
+- 当前低速前进 run（`qpb9sund`）关键指标：
+  - `Perf/total_fps ≈ 51322`
+  - `Train/mean_episode_length ≈ 846`
+  - `Train/mean_reward ≈ 29.30`
+  - `metric_speed_mps ≈ 0.18`
+- 结论：Step 2.1 的“先稳住再前进”基线已建立，可进入 Step 2.2 速度课程学习。
+
+四、验证命令（默认）
+- 训练：
+  - `python3 legged_gym/scripts/train.py --task=g1_sprint_track --num_envs=24 --headless`
+- 回放：
+  - `python3 legged_gym/scripts/play.py --task=g1_sprint_track --num_envs=24`
+
+五、备注
+- 如需严格提高泛化与迁移能力，Step 2.2 将继续采用速度课程（低速->中速->高速）而非一次性提升目标速度。
