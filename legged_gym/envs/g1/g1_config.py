@@ -111,7 +111,7 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCriticRecurrent"
         max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        entropy_coef = 0.01
+        entropy_coef = 0.001
 
 class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
@@ -127,12 +127,12 @@ class G1SprintTrackCfg(G1RoughCfg):
             terminate_on_out_of_track = True
             out_of_track_margin = 0.08
             success_on_reach_lane_end = True
-            lane_end_success_margin = 0.05
+            lane_end_success_margin = 0.25
             num_lanes = 1
             lane_width = 1.25
             lane_length = 12.0
             auto_match_num_envs = False
-            auto_scale_length_with_grid = True
+            auto_scale_length_with_grid = False
             env_grid_rows = 2
             base_grid_cols = 6
             boundary_width = 0.08
@@ -145,7 +145,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.6, 1.2]
+            lin_vel_x = [0.5, 1.0]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -165,7 +165,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             tracking_ang_vel = 0.2
             orientation = -1.0
             base_height = -1.5
-            lateral_velocity = -0.5
+            lateral_velocity = -0.3
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
             feet_air_time = 0.2
@@ -173,10 +173,10 @@ class G1SprintTrackCfg(G1RoughCfg):
             action_rate = -0.005
             stand_still = -0.02
             lane_centering = 0.3
-            lane_offset = -1.5
-            lane_boundary = -1.0
-            yaw_rate = -0.5
-            termination = -100.0
+            lane_offset = -1.0
+            lane_boundary = -0.6
+            yaw_rate = -0.3
+            termination = -30.0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
