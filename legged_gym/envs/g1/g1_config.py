@@ -170,7 +170,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             lateral_velocity = -0.3
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.2
+            feet_air_time = 0.1
             collision = -0.5
             action_rate = -0.005
             stand_still = -0.02
@@ -179,6 +179,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_boundary = -0.6
             yaw_rate = -0.3
             termination = -40.0
+            finish_bonus = 50.0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):

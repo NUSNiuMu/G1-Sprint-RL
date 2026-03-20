@@ -1,0 +1,112 @@
+_wandb:
+    value:
+        cli_version: 0.24.1
+        e:
+            8522htr1yo58t8pikszcrsk0y38asnog:
+                args:
+                    - --task=g1_sprint_track
+                    - --num_envs=4096
+                    - --headless
+                codePath: legged_gym/scripts/train.py
+                codePathLocal: legged_gym/scripts/train.py
+                cpu_count: 16
+                cpu_count_logical: 32
+                cudaVersion: "12.8"
+                disk:
+                    /:
+                        total: "88461090816"
+                        used: "71682740224"
+                email: niumu023@gmail.com
+                executable: /home/niumu/anaconda3/envs/unitree-rl/bin/python3
+                git:
+                    commit: b7f5cab54f764a31cf98b003359e3551497ec9a7
+                    remote: git@github.com:NUSNiuMu/G1-Sprint-RL.git
+                gpu: NVIDIA GeForce RTX 4060 Laptop GPU
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ada
+                      cudaCores: 3072
+                      memoryTotal: "8585740288"
+                      name: NVIDIA GeForce RTX 4060 Laptop GPU
+                      uuid: GPU-a40a5188-3efc-6b72-8234-e0f68ee07efb
+                host: niumu-Legion-R9000P-ARX8
+                memory:
+                    total: "33321541632"
+                os: Linux-5.15.0-67-generic-x86_64-with-glibc2.10
+                program: legged_gym/scripts/train.py
+                python: CPython 3.8.19
+                root: /home/niumu/unitree_ws/src/unitree_rl_gym
+                startedAt: "2026-03-20T13:49:42.690539Z"
+                writerId: 8522htr1yo58t8pikszcrsk0y38asnog
+        m: []
+        python_version: 3.8.19
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 16
+                - 61
+            "4": 3.8.19
+            "5": 0.24.1
+            "12": 0.24.1
+            "13": linux-x86_64
+checkpoint:
+    value: null
+compute_device_id:
+    value: 0
+experiment_name:
+    value: null
+flex:
+    value: false
+graphics_device_id:
+    value: 0
+headless:
+    value: true
+horovod:
+    value: false
+load_run:
+    value: null
+max_iterations:
+    value: null
+num_envs:
+    value: 4096
+num_threads:
+    value: 0
+physics_engine:
+    value: SimType.SIM_PHYSX
+physx:
+    value: false
+pipeline:
+    value: gpu
+resume:
+    value: false
+rl_device:
+    value: cuda:0
+run_name:
+    value: null
+seed:
+    value: null
+sim_device:
+    value: cuda:0
+sim_device_id:
+    value: 0
+sim_device_type:
+    value: cuda
+slices:
+    value: 0
+subscenes:
+    value: 0
+task:
+    value: g1_sprint_track
+use_gpu:
+    value: true
+use_gpu_pipeline:
+    value: true
+use_wandb:
+    value: true
+wandb_entity:
+    value: null
+wandb_project:
+    value: g1_sprint_track

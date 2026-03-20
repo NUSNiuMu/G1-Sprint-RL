@@ -924,6 +924,10 @@ class LeggedRobot(BaseTask):
     def _reward_termination(self):
         # Terminal reward / penalty
         return self.reset_buf * ~(self.time_out_buf | self.finish_termination_buf)
+
+    def _reward_finish_bonus(self):
+        # One-time bonus when reaching the lane end successfully
+        return self.finish_termination_buf.float()
     
     def _reward_dof_pos_limits(self):
         # Penalize dof positions too close to the limit
