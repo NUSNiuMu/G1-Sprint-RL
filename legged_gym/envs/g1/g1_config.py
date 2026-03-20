@@ -126,6 +126,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             visualize_all_env_tracks = True
             terminate_on_out_of_track = True
             out_of_track_margin = 0.08
+            success_on_reach_lane_end = True
+            lane_end_success_margin = 0.05
             num_lanes = 1
             lane_width = 1.25
             lane_length = 6.0
