@@ -180,7 +180,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             yaw_rate = -0.3
             termination = -60.0
             finish_bonus = 60.0
-            timeout_fail = -30.0
+            timeout_fail = 0.0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
