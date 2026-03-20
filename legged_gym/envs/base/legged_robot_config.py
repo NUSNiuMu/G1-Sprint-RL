@@ -39,6 +39,8 @@ class LeggedRobotCfg(BaseConfig):
             enabled = False
             visualize_in_viewer = True
             visualize_all_env_tracks = False
+            terminate_on_out_of_track = False
+            out_of_track_margin = 0.0
             num_lanes = 4
             lane_width = 1.2
             lane_length = 14.0

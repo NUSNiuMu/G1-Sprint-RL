@@ -130,7 +130,24 @@ class LeggedRobot(BaseTask):
         self.attitude_termination_buf = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
         # Catch collapsed seated/fallen poses that may not trigger pelvis contact immediately.
         self.height_termination_buf = self.root_states[:, 2] < 0.45
-        self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf | self.height_termination_buf
+        self.track_termination_buf[:] = False
+        if self.track_layout is not None and self.cfg.terrain.track.terminate_on_out_of_track:
+            local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+            local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+            margin = max(0.0, float(self.cfg.terrain.track.out_of_track_margin))
+            half_length = 0.5 * float(self.track_layout["lane_length"]) + margin
+            left = float(self.track_layout["left_boundary"]) - margin
+            right = float(self.track_layout["right_boundary"]) + margin
+            in_longitudinal = torch.abs(local_x) <= half_length
+            in_lateral = torch.logical_and(local_y >= left, local_y <= right)
+            self.track_termination_buf = ~(in_longitudinal & in_lateral)
+
+        self.reset_buf = (
+            self.contact_termination_buf
+            | self.attitude_termination_buf
+            | self.height_termination_buf
+            | self.track_termination_buf
+        )
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
         self.reset_buf |= self.time_out_buf
 
@@ -538,6 +555,7 @@ class LeggedRobot(BaseTask):
         self.track_semantic_id_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
         self.contact_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.attitude_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.track_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
       
 
         # joint positions offsets and PD gains

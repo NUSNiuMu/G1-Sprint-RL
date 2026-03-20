@@ -124,6 +124,8 @@ class G1SprintTrackCfg(G1RoughCfg):
         class track(G1RoughCfg.terrain.track):
             enabled = True
             visualize_all_env_tracks = True
+            terminate_on_out_of_track = True
+            out_of_track_margin = 0.08
             num_lanes = 1
             lane_width = 1.25
             lane_length = 6.0
