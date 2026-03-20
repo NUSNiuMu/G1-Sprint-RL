@@ -128,7 +128,9 @@ class LeggedRobot(BaseTask):
         """
         self.contact_termination_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.attitude_termination_buf = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
-        self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf
+        # Catch collapsed seated/fallen poses that may not trigger pelvis contact immediately.
+        self.height_termination_buf = self.root_states[:, 2] < 0.45
+        self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf | self.height_termination_buf
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
         self.reset_buf |= self.time_out_buf
 
