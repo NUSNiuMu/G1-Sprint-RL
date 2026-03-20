@@ -130,7 +130,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_end_success_margin = 0.05
             num_lanes = 1
             lane_width = 1.25
-            lane_length = 6.0
+            lane_length = 12.0
             auto_match_num_envs = False
             auto_scale_length_with_grid = True
             env_grid_rows = 2
