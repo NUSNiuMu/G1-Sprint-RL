@@ -976,6 +976,11 @@ class LeggedRobot(BaseTask):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
+    def _reward_track_progress(self):
+        """Reward forward motion along the lane direction (env local +x)."""
+        local_vx = self.root_states[:, 7]
+        return torch.clamp(local_vx, min=0.0)
+
     def _reward_lane_centering(self):
         """Oracle lane-keeping reward used in Step 2.1 baseline.
 
