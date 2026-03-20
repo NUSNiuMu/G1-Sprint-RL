@@ -150,7 +150,14 @@ class LeggedRobot(BaseTask):
             if self.cfg.terrain.track.success_on_reach_lane_end:
                 finish_margin = max(0.0, float(self.cfg.terrain.track.lane_end_success_margin))
                 half_length_nominal = 0.5 * float(self.track_layout["lane_length"])
-                self.finish_termination_buf = local_x >= (half_length_nominal - finish_margin)
+                reached_lane_end = local_x >= (half_length_nominal - finish_margin)
+                safe_finish = ~(
+                    self.contact_termination_buf
+                    | self.attitude_termination_buf
+                    | self.height_termination_buf
+                    | self.track_termination_buf
+                )
+                self.finish_termination_buf = reached_lane_end & safe_finish
 
         self.reset_buf = (
             self.contact_termination_buf
@@ -985,9 +992,17 @@ class LeggedRobot(BaseTask):
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
     def _reward_track_progress(self):
-        """Reward forward motion along the lane direction (env local +x)."""
-        local_vx = self.root_states[:, 7]
-        return torch.clamp(local_vx, min=0.0, max=1.0)
+        """Reward forward progress only when the robot is aligned and centered on the lane."""
+        local_vx = torch.clamp(self.root_states[:, 7], min=0.0, max=1.0)
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading_gate = torch.clamp(forward[:, 0], min=0.0, max=1.0)
+        if self.track_layout is None:
+            return local_vx * heading_gate
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        center_error = local_y - self.env_lane_center_y
+        lane_sigma = max(0.1, 0.35 * float(self.track_layout["lane_width"]))
+        center_gate = torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
+        return local_vx * heading_gate * center_gate
 
     def _reward_heading_alignment(self):
         """Reward facing along the track direction (+x in world/env frame)."""
