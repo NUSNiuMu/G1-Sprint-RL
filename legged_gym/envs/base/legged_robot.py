@@ -983,7 +983,7 @@ class LeggedRobot(BaseTask):
     def _reward_track_progress(self):
         """Reward forward motion along the lane direction (env local +x)."""
         local_vx = self.root_states[:, 7]
-        return torch.clamp(local_vx, min=0.0)
+        return torch.clamp(local_vx, min=0.0, max=1.0)
 
     def _reward_heading_alignment(self):
         """Reward facing along the track direction (+x in world/env frame)."""

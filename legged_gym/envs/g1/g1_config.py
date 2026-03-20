@@ -96,7 +96,7 @@ class G1RoughCfg( LeggedRobotCfg ):
 
 class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class policy:
-        init_noise_std = 0.8
+        init_noise_std = 0.5
         actor_hidden_dims = [32]
         critic_hidden_dims = [32]
         activation = 'elu'
@@ -111,7 +111,7 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCriticRecurrent"
         max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        entropy_coef = 0.005
+        entropy_coef = 0.0001
 
 class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
@@ -162,7 +162,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         class scales(G1RoughCfg.rewards.scales):
             # Increase forward-motion incentive while keeping posture constraints.
             tracking_lin_vel = 1.6
-            track_progress = 2.0
+            track_progress = 1.2
             heading_alignment = 0.8
             tracking_ang_vel = 0.2
             orientation = -1.0
@@ -178,8 +178,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_offset = -1.0
             lane_boundary = -0.6
             yaw_rate = -0.3
-            termination = -40.0
-            finish_bonus = 50.0
+            termination = -60.0
+            finish_bonus = 70.0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
