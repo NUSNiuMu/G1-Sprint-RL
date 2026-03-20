@@ -111,7 +111,7 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCriticRecurrent"
         max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        entropy_coef = 0.001
+        entropy_coef = 0.005
 
 class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
@@ -139,13 +139,15 @@ class G1SprintTrackCfg(G1RoughCfg):
             separator_width = 0.04
             curb_height = 0.025
             lane_mark_height = 0.006
+            spawn_x_jitter = 0.15
+            spawn_y_margin = 0.35
 
     class commands(G1RoughCfg.commands):
         # Running target: prioritize forward sprint speed.
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.5, 1.0]
+            lin_vel_x = [0.3, 0.7]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -176,7 +178,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_offset = -1.0
             lane_boundary = -0.6
             yaw_rate = -0.3
-            termination = -30.0
+            termination = -40.0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
