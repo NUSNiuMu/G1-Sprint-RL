@@ -201,8 +201,8 @@ class LeggedRobot(BaseTask):
         ep_steps = torch.clamp(self.metric_episode_steps[env_ids], min=1.0)
         self.extras["episode"]["metric_speed_mps"] = torch.mean(self.metric_speed_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_collision_rate"] = torch.mean(self.metric_collision_steps[env_ids] / ep_steps)
-        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.time_out_buf[env_ids]).float())
-        self.extras["episode"]["metric_success_rate"] = torch.mean(self.time_out_buf[env_ids].float())
+        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.finish_termination_buf[env_ids]).float())
+        self.extras["episode"]["metric_success_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
         self.extras["episode"]["metric_finish_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
         self.extras["episode"]["metric_torque_utilization"] = torch.mean(self.metric_torque_util_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_torque_violation_rate"] = torch.mean(self.metric_torque_violation_steps[env_ids] / ep_steps)
@@ -928,6 +928,10 @@ class LeggedRobot(BaseTask):
     def _reward_finish_bonus(self):
         # One-time bonus when reaching the lane end successfully
         return self.finish_termination_buf.float()
+
+    def _reward_timeout_fail(self):
+        # Penalize surviving to timeout without reaching lane end
+        return (self.time_out_buf & (~self.finish_termination_buf)).float()
     
     def _reward_dof_pos_limits(self):
         # Penalize dof positions too close to the limit

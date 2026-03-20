@@ -179,7 +179,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_boundary = -0.6
             yaw_rate = -0.3
             termination = -60.0
-            finish_bonus = 70.0
+            finish_bonus = 40.0
+            timeout_fail = 0
             dof_pos_limits = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
