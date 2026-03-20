@@ -158,18 +158,18 @@ class G1SprintTrackCfg(G1RoughCfg):
         class scales(G1RoughCfg.rewards.scales):
             # Increase forward-motion incentive while keeping posture constraints.
             tracking_lin_vel = 2.4
-            tracking_ang_vel = 0.0
+            tracking_ang_vel = -0.1
             orientation = -0.5
             base_height = -1.5
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.4
+            feet_air_time = 0.1
             collision = -0.2
             action_rate = -0.005
             stand_still = -0.02
-            lane_centering = 1.6
-            lane_offset = -0.8
-            lane_boundary = -0.6
+            lane_centering = 0.3
+            lane_offset = 0
+            lane_boundary = 0
             termination = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
