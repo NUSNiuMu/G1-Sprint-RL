@@ -128,7 +128,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_width = 1.25
             lane_length = 6.0
             auto_match_num_envs = False
-            auto_scale_length_with_grid = True
+            auto_scale_length_with_grid = False
             env_grid_rows = 2
             base_grid_cols = 6
             boundary_width = 0.08
