@@ -1006,11 +1006,12 @@ class LeggedRobot(BaseTask):
         return torch.square(local_vy)
 
     def _reward_track_progress(self):
-        """Reward actual forward displacement along the track rather than body-frame sway."""
+        """Reward command-aligned forward displacement along the track."""
         local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
         progress_speed = (local_x - self.last_track_local_x) / self.dt
-        max_progress_speed = max(0.5, float(self.command_ranges["lin_vel_x"][1]) * 2.0)
-        return torch.clamp(progress_speed, min=0.0, max=max_progress_speed)
+        commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
+        allowed_speed = commanded_speed + 0.05
+        return torch.minimum(torch.clamp(progress_speed, min=0.0), allowed_speed)
 
     def _reward_stalling(self):
         """Penalize failing to convert the forward command into actual forward motion."""
@@ -1018,6 +1019,14 @@ class LeggedRobot(BaseTask):
         progress_speed = (local_x - self.last_track_local_x) / self.dt
         commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
         return torch.clamp(commanded_speed - progress_speed, min=0.0)
+
+    def _reward_overspeed(self):
+        """Penalize moving much faster than the commanded straight-line speed."""
+        local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+        progress_speed = (local_x - self.last_track_local_x) / self.dt
+        commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
+        allowed_speed = commanded_speed + 0.05
+        return torch.square(torch.clamp(progress_speed - allowed_speed, min=0.0))
 
     def _reward_finish_bonus(self):
         """Give a one-time bonus only when the robot safely reaches the lane end."""
