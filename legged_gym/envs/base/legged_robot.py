@@ -956,3 +956,13 @@ class LeggedRobot(BaseTask):
         local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
         center_error = local_y - self.env_lane_center_y
         return center_error ** 2
+
+    def _reward_heading_alignment(self):
+        """Reward facing toward track direction (+x in world/env frame)."""
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        return torch.clamp(forward[:, 0], min=0.0)
+
+    def _reward_lateral_velocity(self):
+        """Penalize sideways drift across the lane."""
+        local_vy = self.root_states[:, 8]
+        return torch.square(local_vy)

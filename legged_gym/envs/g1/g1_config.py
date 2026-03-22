@@ -172,6 +172,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             dof_pos_limits = -5.0
             lane_centering = 1.0
             lane_offset = -1.0
+            heading_alignment = 0.8
+            lateral_velocity = -0.3
             alive = 0.15
             hip_pos = -1.0
             contact_no_vel = -0.2
