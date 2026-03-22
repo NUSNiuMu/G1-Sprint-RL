@@ -167,7 +167,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.78
         class scales(G1RoughCfg.rewards.scales):
-            tracking_lin_vel = 1.0
+            tracking_lin_vel = 0.0
             tracking_ang_vel = 1.2
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
@@ -179,14 +179,16 @@ class G1SprintTrackCfg(G1RoughCfg):
             collision = -0.2
             action_rate = -0.01
             dof_pos_limits = -5.0
-            lane_centering = 0.5
+            lane_centering = 0.2
             lane_offset = -2.0
             heading_alignment = 1.2
             heading_error = -1.0
             yaw_rate = -0.8
             lateral_velocity = -0.8
+            track_progress = 8.0
+            stalling = -2.5
             finish_bonus = 30.0
-            alive = 0.15
+            alive = 0.05
             hip_pos = -1.0
             contact_no_vel = -0.2
             feet_swing_height = -20.0

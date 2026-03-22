@@ -137,6 +137,9 @@ def play(args):
     delta = pos_arr[-1] - pos_arr[0]
     step_delta = pos_arr[1:, :2] - pos_arr[:-1, :2]
     path_len_xy = float(np.linalg.norm(step_delta, axis=1).sum()) if len(step_delta) > 0 else 0.0
+    cumulative_positive_dx = float(np.clip(step_delta[:, 0], a_min=0.0, a_max=None).sum()) if len(step_delta) > 0 else 0.0
+    cumulative_negative_dx = float(np.clip(step_delta[:, 0], a_min=None, a_max=0.0).sum()) if len(step_delta) > 0 else 0.0
+    cumulative_abs_dy = float(np.abs(step_delta[:, 1]).sum()) if len(step_delta) > 0 else 0.0
     net_xy = float(np.linalg.norm(delta[:2]))
     trajectory_metrics = {
         "camera_mode": (args.record_camera_mode or "fixed").lower(),
@@ -148,6 +151,9 @@ def play(args):
         "net_y": float(delta[1]),
         "net_xy": net_xy,
         "path_len_xy": path_len_xy,
+        "cumulative_positive_dx": cumulative_positive_dx,
+        "cumulative_negative_dx": cumulative_negative_dx,
+        "cumulative_abs_dy": cumulative_abs_dy,
         "reset_count": int(len(reset_steps)),
         "first_reset_step": int(reset_steps[0]) if reset_steps else None,
     }

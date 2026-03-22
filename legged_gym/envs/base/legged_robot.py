@@ -120,6 +120,7 @@ class LeggedRobot(BaseTask):
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+        self.last_track_local_x[:] = self.root_states[:, 0] - self.env_origins[:, 0]
         if self.cfg.terrain.track.enabled and self.cfg.terrain.track.visualize_in_viewer and not self.headless:
             self._draw_track_debug_lines()
 
@@ -180,6 +181,7 @@ class LeggedRobot(BaseTask):
         self.actions[env_ids] = 0.
         self.last_actions[env_ids] = 0.
         self.last_dof_vel[env_ids] = 0.
+        self.last_track_local_x[env_ids] = self.root_states[env_ids, 0] - self.env_origins[env_ids, 0]
         self.feet_air_time[env_ids] = 0.
         self.episode_length_buf[env_ids] = 0
         self.reset_buf[env_ids] = 1
@@ -562,6 +564,7 @@ class LeggedRobot(BaseTask):
         self.attitude_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.track_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.finish_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.last_track_local_x = self.root_states[:, 0] - self.env_origins[:, 0]
       
 
         # joint positions offsets and PD gains
@@ -1001,6 +1004,20 @@ class LeggedRobot(BaseTask):
         """Penalize sideways drift across the lane."""
         local_vy = self.root_states[:, 8]
         return torch.square(local_vy)
+
+    def _reward_track_progress(self):
+        """Reward actual forward displacement along the track rather than body-frame sway."""
+        local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+        progress_speed = (local_x - self.last_track_local_x) / self.dt
+        max_progress_speed = max(0.5, float(self.command_ranges["lin_vel_x"][1]) * 2.0)
+        return torch.clamp(progress_speed, min=0.0, max=max_progress_speed)
+
+    def _reward_stalling(self):
+        """Penalize failing to convert the forward command into actual forward motion."""
+        local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+        progress_speed = (local_x - self.last_track_local_x) / self.dt
+        commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
+        return torch.clamp(commanded_speed - progress_speed, min=0.0)
 
     def _reward_finish_bonus(self):
         """Give a one-time bonus only when the robot safely reaches the lane end."""
