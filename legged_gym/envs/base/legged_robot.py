@@ -1010,7 +1010,7 @@ class LeggedRobot(BaseTask):
         local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
         progress_speed = (local_x - self.last_track_local_x) / self.dt
         commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
-        allowed_speed = commanded_speed + 0.05
+        allowed_speed = commanded_speed + 0.03
         return torch.minimum(torch.clamp(progress_speed, min=0.0), allowed_speed)
 
     def _reward_stalling(self):
@@ -1025,8 +1025,8 @@ class LeggedRobot(BaseTask):
         local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
         progress_speed = (local_x - self.last_track_local_x) / self.dt
         commanded_speed = torch.clamp(self.commands[:, 0], min=0.0)
-        allowed_speed = commanded_speed + 0.05
-        return torch.square(torch.clamp(progress_speed - allowed_speed, min=0.0))
+        allowed_speed = commanded_speed + 0.03
+        return torch.clamp(progress_speed - allowed_speed, min=0.0)
 
     def _reward_finish_bonus(self):
         """Give a one-time bonus only when the robot safely reaches the lane end."""

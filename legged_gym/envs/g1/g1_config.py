@@ -117,6 +117,7 @@ class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
         # Keep each env visually separated in the global viewer.
         env_spacing = 14.0
+        episode_length_s = 30.0
 
     class viewer(G1RoughCfg.viewer):
         ref_env = 0
@@ -149,7 +150,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.25, 0.30]
+            lin_vel_x = [0.20, 0.25]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -185,10 +186,10 @@ class G1SprintTrackCfg(G1RoughCfg):
             heading_error = -1.2
             yaw_rate = -1.0
             lateral_velocity = -1.0
-            track_progress = 5.0
-            stalling = -2.5
-            overspeed = -6.0
-            finish_bonus = 40.0
+            track_progress = 4.0
+            stalling = -3.0
+            overspeed = -10.0
+            finish_bonus = 50.0
             alive = 0.03
             hip_pos = -1.0
             contact_no_vel = -0.2
