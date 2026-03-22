@@ -977,6 +977,12 @@ class LeggedRobot(BaseTask):
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
         self.feet_air_time *= ~contact_filt
         return rew_airTime
+
+    def _reward_double_air(self):
+        # Penalize flight phases where both feet are airborne at the same time.
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        active_command = torch.norm(self.commands[:, :2], dim=1) > 0.1
+        return (torch.all(~contact, dim=1) & active_command).float()
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
