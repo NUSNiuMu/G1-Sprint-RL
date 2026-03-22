@@ -63,6 +63,35 @@ class G1Robot(LeggedRobot):
         self.leg_phase = torch.cat([self.phase_left.unsqueeze(1), self.phase_right.unsqueeze(1)], dim=-1)
         
         return super()._post_physics_step_callback()
+
+    def _get_lane_oracle_obs(self):
+        if not getattr(self.cfg.terrain.track, "oracle_lane_obs", False) or self.track_layout is None:
+            return None
+
+        local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+        center_error = local_y - self.env_lane_center_y
+        half_width = max(1e-6, float(self.track_layout["lane_width"]) * 0.5)
+        left_clearance = local_y - float(self.track_layout["left_boundary"])
+        right_clearance = float(self.track_layout["right_boundary"]) - local_y
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        heading_error = torch.atan2(forward[:, 1], forward[:, 0]) / torch.pi
+        finish_x = max(
+            1e-6,
+            float(self.track_layout["lane_length"]) * 0.5 - float(self.cfg.terrain.track.lane_end_success_margin),
+        )
+        remaining_distance = torch.clamp((finish_x - local_x) / finish_x, min=-1.0, max=1.0)
+
+        return torch.stack(
+            (
+                torch.clamp(center_error / half_width, min=-2.0, max=2.0),
+                torch.clamp(left_clearance / half_width, min=0.0, max=2.0),
+                torch.clamp(right_clearance / half_width, min=0.0, max=2.0),
+                torch.clamp(heading_error, min=-1.0, max=1.0),
+                remaining_distance,
+            ),
+            dim=-1,
+        )
     
     
     def compute_observations(self):
@@ -92,6 +121,11 @@ class G1Robot(LeggedRobot):
                                     sin_phase,
                                     cos_phase
                                     ),dim=-1)
+
+        lane_obs = self._get_lane_oracle_obs()
+        if lane_obs is not None:
+            proprio_obs = torch.cat((proprio_obs, lane_obs), dim=-1)
+            proprio_privileged = torch.cat((proprio_privileged, lane_obs), dim=-1)
 
         # Add Noise to Proprio
         if self.add_noise:

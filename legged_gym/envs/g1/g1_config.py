@@ -118,6 +118,8 @@ class G1SprintTrackCfg(G1RoughCfg):
         # Keep each env visually separated in the global viewer.
         env_spacing = 14.0
         episode_length_s = 30.0
+        num_observations = 52
+        num_privileged_obs = 55
 
     class viewer(G1RoughCfg.viewer):
         ref_env = 0
@@ -141,6 +143,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             separator_width = 0.04
             curb_height = 0.025
             lane_mark_height = 0.006
+            oracle_lane_obs = True
             spawn_x_jitter = 0.15
             spawn_y_margin = 0.45
             terminate_on_out_of_track = True
