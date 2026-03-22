@@ -98,6 +98,7 @@ def play(args):
     last_frame = None
     positions = []
     reset_steps = []
+    episode_summaries = []
 
     if args.record_play:
         record_dir = _prepare_record_dir(train_cfg, args)
@@ -129,6 +130,16 @@ def play(args):
                 num_episodes = torch.sum(env.reset_buf).item()
                 if num_episodes > 0:
                     logger.log_rewards(infos["episode"], num_episodes)
+                    episode_summary = {"step": int(i), "num_episodes": int(num_episodes)}
+                    for key, value in infos["episode"].items():
+                        if torch.is_tensor(value):
+                            if value.numel() == 1:
+                                episode_summary[key] = float(value.item())
+                            else:
+                                episode_summary[key] = float(value.float().mean().item())
+                        elif isinstance(value, (int, float)):
+                            episode_summary[key] = float(value)
+                    episode_summaries.append(episode_summary)
         elif i == stop_rew_log:
             logger.print_rewards()
 
@@ -173,6 +184,20 @@ def play(args):
         "reset_count": int(len(reset_steps)),
         "first_reset_step": int(reset_steps[0]) if reset_steps else None,
     }
+    if episode_summaries:
+        metric_keys = sorted({key for episode in episode_summaries for key in episode.keys() if key not in {"step", "num_episodes"}})
+        metric_means = {}
+        for key in metric_keys:
+            values = [episode[key] for episode in episode_summaries if key in episode]
+            if values:
+                metric_means[key] = float(np.mean(values))
+        trajectory_metrics["num_completed_episodes"] = len(episode_summaries)
+        trajectory_metrics["episode_metrics_mean"] = metric_means
+        trajectory_metrics["episode_metrics"] = episode_summaries
+    else:
+        trajectory_metrics["num_completed_episodes"] = 0
+        trajectory_metrics["episode_metrics_mean"] = {}
+        trajectory_metrics["episode_metrics"] = []
     print("Play trajectory metrics:", trajectory_metrics)
 
     if writer is not None:
