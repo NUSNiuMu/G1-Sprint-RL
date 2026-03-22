@@ -131,7 +131,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             visualize_all_env_tracks = True
             num_lanes = 1
             lane_width = 1.25
-            lane_length = 6.0
+            lane_length = 12.0
             auto_match_num_envs = False
             auto_scale_length_with_grid = False
             env_grid_rows = 2
@@ -141,9 +141,9 @@ class G1SprintTrackCfg(G1RoughCfg):
             curb_height = 0.025
             lane_mark_height = 0.006
             terminate_on_out_of_track = True
-            out_of_track_margin = 0.02
+            out_of_track_margin = 0.0
             success_on_reach_lane_end = True
-            lane_end_success_margin = 0.15
+            lane_end_success_margin = 0.20
 
     class commands(G1RoughCfg.commands):
         heading_command = False
@@ -179,16 +179,16 @@ class G1SprintTrackCfg(G1RoughCfg):
             collision = -0.2
             action_rate = -0.01
             dof_pos_limits = -5.0
-            lane_centering = 0.2
-            lane_offset = -2.0
-            heading_alignment = 1.2
-            heading_error = -1.0
-            yaw_rate = -0.8
-            lateral_velocity = -0.8
-            track_progress = 8.0
+            lane_centering = 0.15
+            lane_offset = -2.5
+            heading_alignment = 1.3
+            heading_error = -1.2
+            yaw_rate = -1.0
+            lateral_velocity = -1.0
+            track_progress = 7.0
             stalling = -2.5
-            finish_bonus = 30.0
-            alive = 0.05
+            finish_bonus = 40.0
+            alive = 0.03
             hip_pos = -1.0
             contact_no_vel = -0.2
             feet_swing_height = -20.0
