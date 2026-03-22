@@ -137,6 +137,12 @@ def get_args():
         {"name": "--use_wandb", "action": "store_true", "default": False, "help": "Enable WandB logging"},
         {"name": "--wandb_project", "type": str, "default": "legged_gym", "help": "WandB project name"},
         {"name": "--wandb_entity", "type": str, "default": None, "help": "WandB entity name"},
+        {"name": "--play_steps", "type": int, "help": "Number of policy steps to execute during play."},
+        {"name": "--record_play", "action": "store_true", "default": False, "help": "Record a follow-camera video during play."},
+        {"name": "--record_dir", "type": str, "help": "Directory used to save play videos and keyframes."},
+        {"name": "--record_width", "type": int, "default": 960, "help": "Recorded video width for play."},
+        {"name": "--record_height", "type": int, "default": 540, "help": "Recorded video height for play."},
+        {"name": "--record_interval", "type": int, "default": 2, "help": "Capture one video frame every N simulation steps during play."},
     ]
     # parse arguments
     args = gymutil.parse_arguments(
