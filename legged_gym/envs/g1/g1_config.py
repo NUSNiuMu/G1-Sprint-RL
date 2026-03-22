@@ -137,39 +137,44 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_mark_height = 0.006
 
     class commands(G1RoughCfg.commands):
-        # Step 2.1 walking phase: keep stable while starting forward motion.
-        heading_command = False
+        heading_command = True
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.15, 0.25]
-            lin_vel_y = [0.0, 0.0]
-            ang_vel_yaw = [0.0, 0.0]
-            heading = [0.0, 0.0]
+            lin_vel_x = [-1.0, 1.0]
+            lin_vel_y = [-1.0, 1.0]
+            ang_vel_yaw = [-1.0, 1.0]
+            heading = [-3.14, 3.14]
 
     class domain_rand(G1RoughCfg.domain_rand):
-        # Step 2.1 focuses on a stable locomotion baseline first.
-        randomize_friction = False
-        randomize_base_mass = False
-        push_robots = False
+        randomize_friction = True
+        friction_range = [0.1, 1.25]
+        randomize_base_mass = True
+        added_mass_range = [-1., 3.]
+        push_robots = True
+        push_interval_s = 5
+        max_push_vel_xy = 1.5
 
     class rewards(G1RoughCfg.rewards):
+        soft_dof_pos_limit = 0.9
+        base_height_target = 0.78
         class scales(G1RoughCfg.rewards.scales):
-            # Tune for stable straight walking before speed-up.
-            tracking_lin_vel = 1.8
+            tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            lin_vel_z = -1.0
-            ang_vel_xy = -0.1
+            lin_vel_z = -2.0
+            ang_vel_xy = -0.05
             orientation = -1.0
-            base_height = -1.5
-            dof_vel = -2.5e-4
+            base_height = -10.0
             dof_acc = -2.5e-7
-            feet_air_time = 0.1
-            collision = -0.5
+            dof_vel = -1e-3
+            feet_air_time = 0.0
+            collision = 0.0
             action_rate = -0.01
-            stand_still = -0.02
-            lane_centering = 1.2
-            dof_pos_limits = -1.0
-            termination = -2.0
+            dof_pos_limits = -5.0
+            alive = 0.15
+            hip_pos = -1.0
+            contact_no_vel = -0.2
+            feet_swing_height = -20.0
+            contact = 0.18
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):
