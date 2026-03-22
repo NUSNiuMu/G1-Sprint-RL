@@ -141,7 +141,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.1, 0.4]
+            lin_vel_x = [0.15, 0.25]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -154,19 +154,22 @@ class G1SprintTrackCfg(G1RoughCfg):
 
     class rewards(G1RoughCfg.rewards):
         class scales(G1RoughCfg.rewards.scales):
-            # Increase forward-motion incentive while keeping posture constraints.
+            # Tune for stable straight walking before speed-up.
             tracking_lin_vel = 1.8
-            tracking_ang_vel = 0.0
-            orientation = -0.5
+            tracking_ang_vel = 0.5
+            lin_vel_z = -1.0
+            ang_vel_xy = -0.1
+            orientation = -1.0
             base_height = -1.5
-            dof_vel = -2.0e-4
+            dof_vel = -2.5e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.2
-            collision = -0.2
-            action_rate = -0.005
+            feet_air_time = 0.1
+            collision = -0.5
+            action_rate = -0.01
             stand_still = -0.02
-            lane_centering = 1.0
-            termination = -1.0
+            lane_centering = 1.2
+            dof_pos_limits = -1.0
+            termination = -2.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):
