@@ -137,13 +137,13 @@ class G1SprintTrackCfg(G1RoughCfg):
             lane_mark_height = 0.006
 
     class commands(G1RoughCfg.commands):
-        heading_command = True
+        heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [-1.0, 1.0]
-            lin_vel_y = [-1.0, 1.0]
-            ang_vel_yaw = [-1.0, 1.0]
-            heading = [-3.14, 3.14]
+            lin_vel_x = [0.2, 0.5]
+            lin_vel_y = [0.0, 0.0]
+            ang_vel_yaw = [0.0, 0.0]
+            heading = [0.0, 0.0]
 
     class domain_rand(G1RoughCfg.domain_rand):
         randomize_friction = True
@@ -158,8 +158,8 @@ class G1SprintTrackCfg(G1RoughCfg):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.78
         class scales(G1RoughCfg.rewards.scales):
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
+            tracking_lin_vel = 1.2
+            tracking_ang_vel = 1.0
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
             orientation = -1.0
@@ -167,9 +167,11 @@ class G1SprintTrackCfg(G1RoughCfg):
             dof_acc = -2.5e-7
             dof_vel = -1e-3
             feet_air_time = 0.0
-            collision = 0.0
+            collision = -0.2
             action_rate = -0.01
             dof_pos_limits = -5.0
+            lane_centering = 1.0
+            lane_offset = -1.0
             alive = 0.15
             hip_pos = -1.0
             contact_no_vel = -0.2
