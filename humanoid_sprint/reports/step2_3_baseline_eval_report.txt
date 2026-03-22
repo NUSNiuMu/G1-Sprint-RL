@@ -1,0 +1,27 @@
+Step 2.3 基线评估脚本报告
+
+本步骤实现了 g1_sprint_track 任务的统一基线评估入口。主要工作包括：
+1. 扩展 play.py，在 trajectory_metrics.json 中持久化 episode 级指标。
+2. 修复 CLI seed 到 env_cfg.seed 的传递问题，保证多随机种子评估真实生效。
+3. 新增 humanoid_sprint/scripts/eval_g1_sprint_baseline.py，用于批量运行多 seed 固定相机评估，并自动输出 JSON 与 Markdown 汇总结果。
+
+本次基线验收配置如下：
+- task：g1_sprint_track
+- experiment_name：g1
+- run：Mar22_18-32-10_autoloop_r20_longrun_from_r19_300_800
+- checkpoint：950
+- seeds：1,7,13
+- play_steps：1200
+- dt：0.02
+
+聚合结果如下：
+- mean_avg_forward_speed_mps：0.9996
+- metric_speed_mps：1.0238 +/- 0.0047
+- metric_finish_rate：1.0000
+- metric_fall_rate：0.0000
+- metric_out_of_track_fail_rate：0.0000
+- metric_lane_violation_rate：0.0000
+- semantic_lane_ratio：1.0000
+
+结论：
+当前基线模型在多随机种子下表现稳定，无跌倒、无越道、无跑道违规，并保持约 1 m/s 的平均前向速度，满足 Step 2.3 对“可复现实验基线”的要求。
