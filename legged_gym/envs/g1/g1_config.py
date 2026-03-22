@@ -96,7 +96,7 @@ class G1RoughCfg( LeggedRobotCfg ):
 
 class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class policy:
-        init_noise_std = 0.8
+        init_noise_std = 0.5
         actor_hidden_dims = [32]
         critic_hidden_dims = [32]
         activation = 'elu'
@@ -111,7 +111,7 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCriticRecurrent"
         max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        entropy_coef = 0.01
+        entropy_coef = 0.001
 
 class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
@@ -150,7 +150,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         friction_range = [0.1, 1.25]
         randomize_base_mass = True
         added_mass_range = [-1., 3.]
-        push_robots = True
+        push_robots = False
         push_interval_s = 5
         max_push_vel_xy = 1.5
 

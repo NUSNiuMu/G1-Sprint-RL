@@ -132,18 +132,21 @@ class TaskRegistry():
             log_dir = None
         else:
             log_dir = os.path.join(log_root, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + train_cfg.runner.run_name)
-        
+
+        # 在创建新日志目录之前先解析 resume 路径，否则“最新 run”会错误指向当前空目录。
+        resume = train_cfg.runner.resume
+        resume_path = None
+        if resume:
+            resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
+
         # 将配置类转换为字典以适配 Runner
         train_cfg_dict = class_to_dict(train_cfg)
         runner = OnPolicyRunner(env, train_cfg_dict, log_dir, device=args.rl_device)
-        #save resume path before creating a new log_dir
-        resume = train_cfg.runner.resume
-        if resume:
+        if resume and resume_path is not None:
             # 加载之前训练的模型权重
-            resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
             print(f"Loading model from: {resume_path}")
             runner.load(resume_path)
-            
+
         return runner, train_cfg
 
 # 创建全局任务注册表实例
