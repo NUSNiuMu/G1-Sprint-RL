@@ -962,6 +962,15 @@ class LeggedRobot(BaseTask):
         forward = quat_apply(self.base_quat, self.forward_vec)
         return torch.clamp(forward[:, 0], min=0.0)
 
+    def _reward_heading_error(self):
+        """Penalize heading error away from the track forward direction."""
+        forward = quat_apply(self.base_quat, self.forward_vec)
+        return torch.square(1.0 - torch.clamp(forward[:, 0], min=-1.0, max=1.0))
+
+    def _reward_yaw_rate(self):
+        """Penalize turning rate so the robot keeps moving straight."""
+        return torch.square(self.base_ang_vel[:, 2])
+
     def _reward_lateral_velocity(self):
         """Penalize sideways drift across the lane."""
         local_vy = self.root_states[:, 8]
