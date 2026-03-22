@@ -141,6 +141,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             separator_width = 0.04
             curb_height = 0.025
             lane_mark_height = 0.006
+            spawn_x_jitter = 0.15
+            spawn_y_margin = 0.45
             terminate_on_out_of_track = True
             out_of_track_margin = 0.0
             success_on_reach_lane_end = True
@@ -180,8 +182,8 @@ class G1SprintTrackCfg(G1RoughCfg):
             collision = -0.2
             action_rate = -0.01
             dof_pos_limits = -5.0
-            lane_centering = 0.15
-            lane_offset = -2.5
+            lane_centering = 0.25
+            lane_offset = -4.0
             heading_alignment = 1.3
             heading_error = -1.2
             yaw_rate = -1.0
