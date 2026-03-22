@@ -143,6 +143,7 @@ def get_args():
         {"name": "--record_width", "type": int, "default": 960, "help": "Recorded video width for play."},
         {"name": "--record_height", "type": int, "default": 540, "help": "Recorded video height for play."},
         {"name": "--record_interval", "type": int, "default": 2, "help": "Capture one video frame every N simulation steps during play."},
+        {"name": "--record_camera_mode", "type": str, "default": "fixed", "help": "Camera mode for play recording: fixed or follow."},
     ]
     # parse arguments
     args = gymutil.parse_arguments(

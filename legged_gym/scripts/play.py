@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -23,7 +24,7 @@ def _prepare_record_dir(train_cfg, args):
     return out_dir
 
 
-def _create_follow_camera(env, args):
+def _create_record_camera(env, env_cfg, args):
     if env.graphics_device_id < 0:
         raise RuntimeError("record_play requires graphics. Run play without --headless.")
     camera_props = gymapi.CameraProperties()
@@ -31,13 +32,22 @@ def _create_follow_camera(env, args):
     camera_props.height = args.record_height
     camera_props.enable_tensors = False
     camera_handle = env.gym.create_camera_sensor(env.envs[0], camera_props)
+    _update_record_camera(env, env_cfg, camera_handle, args)
     return camera_handle, camera_props
 
 
-def _update_follow_camera(env, camera_handle):
-    base_pos = env.root_states[0, :3].detach().cpu().numpy()
-    eye = gymapi.Vec3(float(base_pos[0] - 2.5), float(base_pos[1] - 1.5), float(base_pos[2] + 1.2))
-    target = gymapi.Vec3(float(base_pos[0] + 1.5), float(base_pos[1]), float(base_pos[2] + 0.7))
+def _update_record_camera(env, env_cfg, camera_handle, args):
+    mode = (args.record_camera_mode or "fixed").lower()
+    if mode == "follow":
+        base_pos = env.root_states[0, :3].detach().cpu().numpy()
+        eye = gymapi.Vec3(float(base_pos[0] - 2.5), float(base_pos[1] - 1.5), float(base_pos[2] + 1.2))
+        target = gymapi.Vec3(float(base_pos[0] + 1.5), float(base_pos[1]), float(base_pos[2] + 0.7))
+    else:
+        env_origin = env.env_origins[0].detach().cpu().numpy()
+        eye_cfg = np.asarray(env_cfg.viewer.pos, dtype=np.float32)
+        target_cfg = np.asarray(env_cfg.viewer.lookat, dtype=np.float32)
+        eye = gymapi.Vec3(*(env_origin + eye_cfg).tolist())
+        target = gymapi.Vec3(*(env_origin + target_cfg).tolist())
     env.gym.set_camera_location(camera_handle, env.envs[0], eye, target)
 
 
@@ -86,20 +96,26 @@ def play(args):
     camera_props = None
     first_frame_saved = False
     last_frame = None
+    positions = []
+    reset_steps = []
 
     if args.record_play:
         record_dir = _prepare_record_dir(train_cfg, args)
-        camera_handle, camera_props = _create_follow_camera(env, args)
+        camera_handle, camera_props = _create_record_camera(env, env_cfg, args)
         fps = max(1, int(round((1.0 / env.dt) / max(1, args.record_interval))))
         writer = imageio.get_writer(record_dir / "play.mp4", fps=min(60, fps))
         print("Recording play evaluation to:", record_dir)
+        print("Recording camera mode:", (args.record_camera_mode or "fixed").lower())
 
     for i in range(total_steps):
+        positions.append(env.root_states[0, :3].detach().cpu().numpy().copy())
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
+        if bool(dones[0].item()):
+            reset_steps.append(i)
 
         if writer is not None and i % max(1, args.record_interval) == 0:
-            _update_follow_camera(env, camera_handle)
+            _update_record_camera(env, env_cfg, camera_handle, args)
             frame = _capture_camera_frame(env, camera_handle, camera_props)
             if frame is not None:
                 writer.append_data(frame)
@@ -116,9 +132,32 @@ def play(args):
         elif i == stop_rew_log:
             logger.print_rewards()
 
+    positions.append(env.root_states[0, :3].detach().cpu().numpy().copy())
+    pos_arr = np.asarray(positions, dtype=np.float32)
+    delta = pos_arr[-1] - pos_arr[0]
+    step_delta = pos_arr[1:, :2] - pos_arr[:-1, :2]
+    path_len_xy = float(np.linalg.norm(step_delta, axis=1).sum()) if len(step_delta) > 0 else 0.0
+    net_xy = float(np.linalg.norm(delta[:2]))
+    trajectory_metrics = {
+        "camera_mode": (args.record_camera_mode or "fixed").lower(),
+        "total_steps": int(total_steps),
+        "start_pos": pos_arr[0].tolist(),
+        "end_pos": pos_arr[-1].tolist(),
+        "delta_xyz": delta.tolist(),
+        "net_x": float(delta[0]),
+        "net_y": float(delta[1]),
+        "net_xy": net_xy,
+        "path_len_xy": path_len_xy,
+        "reset_count": int(len(reset_steps)),
+        "first_reset_step": int(reset_steps[0]) if reset_steps else None,
+    }
+    print("Play trajectory metrics:", trajectory_metrics)
+
     if writer is not None:
         if last_frame is not None:
             imageio.imwrite(record_dir / "frame_end.png", last_frame)
+        with open(record_dir / "trajectory_metrics.json", "w", encoding="utf-8") as f:
+            json.dump(trajectory_metrics, f, indent=2)
         writer.close()
         print("Saved play recording to:", record_dir)
 
