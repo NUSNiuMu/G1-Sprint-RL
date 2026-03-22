@@ -202,6 +202,8 @@ class G1SprintTrackCfgPPO(G1RoughCfgPPO):
 
     class algorithm(G1RoughCfgPPO.algorithm):
         entropy_coef = 0.0005
+        learning_rate = 1.0e-4
+        desired_kl = 0.005
 
     class runner(G1RoughCfgPPO.runner):
         experiment_name = "g1_sprint_track"

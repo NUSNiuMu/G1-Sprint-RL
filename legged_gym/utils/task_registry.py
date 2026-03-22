@@ -135,6 +135,7 @@ class TaskRegistry():
 
         # 在创建新日志目录之前先解析 resume 路径，否则“最新 run”会错误指向当前空目录。
         resume = train_cfg.runner.resume
+        resume_model_only = getattr(train_cfg.runner, "resume_model_only", False)
         resume_path = None
         if resume:
             resume_path = get_load_path(log_root, load_run=train_cfg.runner.load_run, checkpoint=train_cfg.runner.checkpoint)
@@ -145,7 +146,9 @@ class TaskRegistry():
         if resume and resume_path is not None:
             # 加载之前训练的模型权重
             print(f"Loading model from: {resume_path}")
-            runner.load(resume_path)
+            runner.load(resume_path, load_optimizer=not resume_model_only)
+            if resume_model_only:
+                runner.current_learning_iteration = 0
 
         return runner, train_cfg
 
