@@ -136,10 +136,24 @@ def play(args):
     pos_arr = np.asarray(positions, dtype=np.float32)
     delta = pos_arr[-1] - pos_arr[0]
     step_delta = pos_arr[1:, :2] - pos_arr[:-1, :2]
-    path_len_xy = float(np.linalg.norm(step_delta, axis=1).sum()) if len(step_delta) > 0 else 0.0
-    cumulative_positive_dx = float(np.clip(step_delta[:, 0], a_min=0.0, a_max=None).sum()) if len(step_delta) > 0 else 0.0
-    cumulative_negative_dx = float(np.clip(step_delta[:, 0], a_min=None, a_max=0.0).sum()) if len(step_delta) > 0 else 0.0
-    cumulative_abs_dy = float(np.abs(step_delta[:, 1]).sum()) if len(step_delta) > 0 else 0.0
+    valid_step_mask = np.ones(len(step_delta), dtype=bool)
+    for step in reset_steps:
+        if 0 <= step < len(valid_step_mask):
+            # Ignore teleport jumps caused by successful/terminal env resets.
+            valid_step_mask[step] = False
+    filtered_step_delta = step_delta[valid_step_mask]
+    path_len_xy = float(np.linalg.norm(filtered_step_delta, axis=1).sum()) if len(filtered_step_delta) > 0 else 0.0
+    cumulative_positive_dx = float(np.clip(filtered_step_delta[:, 0], a_min=0.0, a_max=None).sum()) if len(filtered_step_delta) > 0 else 0.0
+    cumulative_negative_dx = float(np.clip(filtered_step_delta[:, 0], a_min=None, a_max=0.0).sum()) if len(filtered_step_delta) > 0 else 0.0
+    cumulative_abs_dy = float(np.abs(filtered_step_delta[:, 1]).sum()) if len(filtered_step_delta) > 0 else 0.0
+    segment_forward_dx = []
+    segment_start = 0
+    for step in reset_steps:
+        segment_end = min(step + 1, len(pos_arr) - 1)
+        segment_forward_dx.append(float(pos_arr[segment_end, 0] - pos_arr[segment_start, 0]))
+        segment_start = min(step + 1, len(pos_arr) - 1)
+    if segment_start < len(pos_arr) - 1:
+        segment_forward_dx.append(float(pos_arr[-1, 0] - pos_arr[segment_start, 0]))
     net_xy = float(np.linalg.norm(delta[:2]))
     trajectory_metrics = {
         "camera_mode": (args.record_camera_mode or "fixed").lower(),
@@ -154,6 +168,8 @@ def play(args):
         "cumulative_positive_dx": cumulative_positive_dx,
         "cumulative_negative_dx": cumulative_negative_dx,
         "cumulative_abs_dy": cumulative_abs_dy,
+        "segment_forward_dx": segment_forward_dx,
+        "best_segment_forward_dx": max(segment_forward_dx) if segment_forward_dx else 0.0,
         "reset_count": int(len(reset_steps)),
         "first_reset_step": int(reset_steps[0]) if reset_steps else None,
     }
