@@ -96,7 +96,7 @@ class G1RoughCfg( LeggedRobotCfg ):
 
 class G1RoughCfgPPO(LeggedRobotCfgPPO):
     class policy:
-        init_noise_std = 0.5
+        init_noise_std = 0.8
         actor_hidden_dims = [32]
         critic_hidden_dims = [32]
         activation = 'elu'
@@ -111,7 +111,7 @@ class G1RoughCfgPPO(LeggedRobotCfgPPO):
         policy_class_name = "ActorCriticRecurrent"
         max_iterations = 10000
     class algorithm(LeggedRobotCfgPPO.algorithm):
-        entropy_coef = 0.0001
+        entropy_coef = 0.01
 
 class G1SprintTrackCfg(G1RoughCfg):
     class env(G1RoughCfg.env):
@@ -124,30 +124,24 @@ class G1SprintTrackCfg(G1RoughCfg):
         class track(G1RoughCfg.terrain.track):
             enabled = True
             visualize_all_env_tracks = True
-            terminate_on_out_of_track = True
-            out_of_track_margin = 0.08
-            success_on_reach_lane_end = True
-            lane_end_success_margin = 0.25
             num_lanes = 1
             lane_width = 1.25
-            lane_length = 12.0
+            lane_length = 6.0
             auto_match_num_envs = False
-            auto_scale_length_with_grid = False
+            auto_scale_length_with_grid = True
             env_grid_rows = 2
             base_grid_cols = 6
             boundary_width = 0.08
             separator_width = 0.04
             curb_height = 0.025
             lane_mark_height = 0.006
-            spawn_x_jitter = 0.15
-            spawn_y_margin = 0.35
 
     class commands(G1RoughCfg.commands):
-        # Running target: prioritize forward sprint speed.
+        # Step 2.1 walking phase: keep stable while starting forward motion.
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.3, 0.7]
+            lin_vel_x = [0.1, 0.4]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -161,28 +155,18 @@ class G1SprintTrackCfg(G1RoughCfg):
     class rewards(G1RoughCfg.rewards):
         class scales(G1RoughCfg.rewards.scales):
             # Increase forward-motion incentive while keeping posture constraints.
-            tracking_lin_vel = 1.2
-            track_progress = 1.0
-            heading_alignment = 0.1
-            tracking_ang_vel = 0.1
-            orientation = -1.0
+            tracking_lin_vel = 1.8
+            tracking_ang_vel = 0.0
+            orientation = -0.5
             base_height = -1.5
-            lateral_velocity = -0.3
             dof_vel = -2.0e-4
             dof_acc = -2.5e-7
-            feet_air_time = 0.03
-            collision = -0.5
-            action_rate = -0.008
+            feet_air_time = 0.2
+            collision = -0.2
+            action_rate = -0.005
             stand_still = -0.02
-            lane_centering = 0.0
-            lane_offset = -1.2
-            lane_boundary = -0.6
-            yaw_rate = -0.3
-            termination = -60.0
-            finish_bonus = 60.0
-            timeout_fail = 0.0
-            double_air = -0.4
-            dof_pos_limits = -1.0
+            lane_centering = 1.0
+            termination = -1.0
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
     class runner(G1RoughCfgPPO.runner):

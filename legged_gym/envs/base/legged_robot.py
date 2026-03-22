@@ -128,47 +128,8 @@ class LeggedRobot(BaseTask):
         """
         self.contact_termination_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.attitude_termination_buf = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
-        # Catch collapsed seated/fallen poses that may not trigger pelvis contact immediately.
-        self.height_termination_buf = self.root_states[:, 2] < 0.45
-        self.track_termination_buf[:] = False
-        self.finish_termination_buf[:] = False
-        local_x = None
-        local_y = None
-        if self.track_layout is not None:
-            local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
-            local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-
-            if self.cfg.terrain.track.terminate_on_out_of_track:
-                margin = max(0.0, float(self.cfg.terrain.track.out_of_track_margin))
-                half_length = 0.5 * float(self.track_layout["lane_length"]) + margin
-                left = float(self.track_layout["left_boundary"]) - margin
-                right = float(self.track_layout["right_boundary"]) + margin
-                in_longitudinal = torch.abs(local_x) <= half_length
-                in_lateral = torch.logical_and(local_y >= left, local_y <= right)
-                self.track_termination_buf = ~(in_longitudinal & in_lateral)
-
-            if self.cfg.terrain.track.success_on_reach_lane_end:
-                finish_margin = max(0.0, float(self.cfg.terrain.track.lane_end_success_margin))
-                half_length_nominal = 0.5 * float(self.track_layout["lane_length"])
-                reached_lane_end = local_x >= (half_length_nominal - finish_margin)
-                safe_finish = ~(
-                    self.contact_termination_buf
-                    | self.attitude_termination_buf
-                    | self.height_termination_buf
-                    | self.track_termination_buf
-                )
-                self.finish_termination_buf = reached_lane_end & safe_finish
-
-        self.reset_buf = (
-            self.contact_termination_buf
-            | self.attitude_termination_buf
-            | self.height_termination_buf
-            | self.track_termination_buf
-            | self.finish_termination_buf
-        )
+        self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
-        # treat reaching lane end as successful timeout-like termination
-        self.time_out_buf |= self.finish_termination_buf
         self.reset_buf |= self.time_out_buf
 
     def reset_idx(self, env_ids):
@@ -208,9 +169,8 @@ class LeggedRobot(BaseTask):
         ep_steps = torch.clamp(self.metric_episode_steps[env_ids], min=1.0)
         self.extras["episode"]["metric_speed_mps"] = torch.mean(self.metric_speed_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_collision_rate"] = torch.mean(self.metric_collision_steps[env_ids] / ep_steps)
-        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.finish_termination_buf[env_ids]).float())
-        self.extras["episode"]["metric_success_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
-        self.extras["episode"]["metric_finish_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
+        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.time_out_buf[env_ids]).float())
+        self.extras["episode"]["metric_success_rate"] = torch.mean(self.time_out_buf[env_ids].float())
         self.extras["episode"]["metric_torque_utilization"] = torch.mean(self.metric_torque_util_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_torque_violation_rate"] = torch.mean(self.metric_torque_violation_steps[env_ids] / ep_steps)
         self.extras["episode"]["metric_lane_violation_rate"] = torch.mean(self.metric_lane_violation_steps[env_ids] / ep_steps)
@@ -576,8 +536,6 @@ class LeggedRobot(BaseTask):
         self.track_semantic_id_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
         self.contact_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.attitude_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
-        self.track_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
-        self.finish_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
       
 
         # joint positions offsets and PD gains
@@ -894,10 +852,6 @@ class LeggedRobot(BaseTask):
     def _reward_ang_vel_xy(self):
         # Penalize xy axes base angular velocity
         return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
-
-    def _reward_yaw_rate(self):
-        # Penalize spinning around z-axis (prevents pivot-in-place gait hacks)
-        return torch.square(self.base_ang_vel[:, 2])
     
     def _reward_orientation(self):
         # Penalize non flat base orientation
@@ -930,15 +884,7 @@ class LeggedRobot(BaseTask):
     
     def _reward_termination(self):
         # Terminal reward / penalty
-        return self.reset_buf * ~(self.time_out_buf | self.finish_termination_buf)
-
-    def _reward_finish_bonus(self):
-        # One-time bonus when reaching the lane end successfully
-        return self.finish_termination_buf.float()
-
-    def _reward_timeout_fail(self):
-        # Penalize surviving to timeout without reaching lane end
-        return (self.time_out_buf & (~self.finish_termination_buf)).float()
+        return self.reset_buf * ~self.time_out_buf
     
     def _reward_dof_pos_limits(self):
         # Penalize dof positions too close to the limit
@@ -977,12 +923,6 @@ class LeggedRobot(BaseTask):
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
         self.feet_air_time *= ~contact_filt
         return rew_airTime
-
-    def _reward_double_air(self):
-        # Penalize flight phases where both feet are airborne at the same time.
-        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
-        active_command = torch.norm(self.commands[:, :2], dim=1) > 0.1
-        return (torch.all(~contact, dim=1) & active_command).float()
     
     def _reward_stumble(self):
         # Penalize feet hitting vertical surfaces
@@ -997,29 +937,6 @@ class LeggedRobot(BaseTask):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
 
-    def _reward_track_progress(self):
-        """Reward forward progress only when the robot is aligned and centered on the lane."""
-        local_vx = torch.clamp(self.root_states[:, 7], min=0.0, max=1.0)
-        forward = quat_apply(self.base_quat, self.forward_vec)
-        heading_gate = torch.clamp(forward[:, 0], min=0.0, max=1.0)
-        if self.track_layout is None:
-            return local_vx * heading_gate
-        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-        center_error = local_y - self.env_lane_center_y
-        lane_sigma = max(0.1, 0.35 * float(self.track_layout["lane_width"]))
-        center_gate = torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
-        return local_vx * heading_gate * center_gate
-
-    def _reward_heading_alignment(self):
-        """Reward facing along the track direction (+x in world/env frame)."""
-        forward = quat_apply(self.base_quat, self.forward_vec)
-        return torch.clamp(forward[:, 0], min=0.0)
-
-    def _reward_lateral_velocity(self):
-        """Penalize sideways drift across the lane."""
-        local_vy = self.root_states[:, 8]
-        return torch.square(local_vy)
-
     def _reward_lane_centering(self):
         """Oracle lane-keeping reward used in Step 2.1 baseline.
 
@@ -1031,22 +948,3 @@ class LeggedRobot(BaseTask):
         center_error = local_y - self.env_lane_center_y
         lane_sigma = max(0.1, 0.5 * float(self.track_layout["lane_width"]))
         return torch.exp(-(center_error ** 2) / (lane_sigma ** 2))
-
-    def _reward_lane_offset(self):
-        """Penalize lateral offset from lane centerline."""
-        if self.track_layout is None:
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-        center_error = local_y - self.env_lane_center_y
-        return center_error ** 2
-
-    def _reward_lane_boundary(self):
-        """Penalize getting too close to lane boundaries."""
-        if self.track_layout is None:
-            return torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-        local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
-        left = float(self.track_layout["left_boundary"])
-        right = float(self.track_layout["right_boundary"])
-        edge_clearance = torch.minimum(local_y - left, right - local_y)
-        margin = max(0.05, 0.15 * float(self.track_layout["lane_width"]))
-        return torch.clamp((margin - edge_clearance) / margin, min=0.0)
