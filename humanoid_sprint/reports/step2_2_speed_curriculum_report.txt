@@ -1,0 +1,129 @@
+Step 2.2 速度课程学习完成报告
+生成时间：2026-03-22
+状态：已完成（经用户确认）
+
+一、阶段目标
+- 在 Step 2.1 的 Oracle Lane 基线之上，继续推进速度课程学习。
+- 在跑道长度翻倍后的场景中，不仅要“能动”，还要满足：稳定直线前进、不越道、不摔倒。
+- 形成可继续用于后续提速的稳定 checkpoint。
+
+二、本步最终结论
+- 本步最终接受版本不是“单纯继续加速度奖励”，而是“低速稳定直线行走的速度课程第一阶段完成版”。
+- 跑道长度已翻倍为 `12.0 m`。
+- 训练规模采用 `4096 envs`，最大训练轮次配置为 `800 iterations`。
+- 最终有效方案采用：
+  1. 固定相机 + 净位移评估闭环，而不是只看 viewer 关键帧。
+  2. 从本地稳定 G1 locomotion checkpoint 做迁移，而不是从零硬训或从已退化 sprint 策略继续训。
+  3. 向 actor 注入 Oracle Lane 观测，使策略显式看到“我是否在跑道中线、朝向是否正确、离终点还有多远”。
+
+三、本步核心实现
+1) 双倍跑道长度与更稳定的起始条件
+- 文件：`/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/g1/g1_config.py`
+- 关键配置：
+  - `lane_length = 12.0`
+  - `episode_length_s = 30.0`
+  - `spawn_x_jitter = 0.15`
+  - `spawn_y_margin = 0.45`
+- 作用：
+  - 让双倍跑道训练与评估一致。
+  - 避免机器人出生点横向偏差过大，减少“开局就偏”的伪困难。
+
+2) 真实前进与越道趋势约束
+- 文件：`/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/base/legged_robot.py`
+- 新增/强化奖励逻辑：
+  - `track_progress`：基于真实沿跑道方向的位移，而不是仅依赖 body-frame 速度。
+  - `stalling`：命令了前进但没有真实向前推进时惩罚。
+  - `overspeed`：超过命令速度太多时惩罚，防止“快冲快偏”。
+  - `lane_divergence`：横向误差持续增大时惩罚，防止“稳定但越走越偏”。
+- 作用：
+  - 把奖励从“会动”改成“沿跑道真实前进”。
+  - 让策略不再通过摆动、转圈或超速硬冲来取巧。
+
+3) Oracle Lane 观测接入 Actor
+- 文件：`/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/envs/g1/g1_env.py`
+- 新增 `_get_lane_oracle_obs()`，向 actor 直接提供：
+  - 中线偏差
+  - 左边界余量
+  - 右边界余量
+  - 航向误差
+  - 到终点剩余归一化距离
+- 配置文件同步更新：
+  - `num_observations = 52`
+  - `num_privileged_obs = 55`
+  - `oracle_lane_obs = True`
+- 作用：
+  - 让策略“看得见”跑道几何信息。
+  - 这是本步真正让直线稳定性提升的关键，不再只是靠奖励做事后修正。
+
+4) 模型迁移方式修正：仅迁移模型，不继承旧优化器
+- 文件：
+  - `/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/utils/helpers.py`
+  - `/home/niumu/unitree_ws/src/unitree_rl_gym/legged_gym/utils/task_registry.py`
+- 新增能力：
+  - `--resume_model_only`
+  - 跨观测维度变化的柔性加载（旧权重部分拷贝到新输入结构）
+- 作用：
+  - 复用旧 G1 稳定 gait，而不把旧任务的优化器状态和学习进度一起带进来。
+  - 在加入 Oracle Lane 观测后，依然可以安全迁移旧 checkpoint。
+
+四、最终接受版本
+- 最佳 run：`Mar22_17-21-48_autoloop_r12_oracle_lane_transfer800`
+- W&B run id：`iul5phys`
+- 最佳 checkpoint：`model_50.pt`
+
+五、训练结果（接受依据）
+1) 训练面板指标（停止前）
+- `metric_finish_rate ≈ 0.9659`
+- `metric_out_of_track_fail_rate = 0.0000`
+- `metric_fall_rate = 0.0000`
+- `metric_speed_mps ≈ 0.2301`
+- `track_lane_length = 12.0000`
+
+2) 固定相机 play 实测结果（最终验收）
+- 评估目录：`/tmp/autoloop_eval_r12_50/g1_sprint_track_20260322_172328`
+- 轨迹指标：
+  - `net_x = 3.9323 m`
+  - `net_y = 0.1348 m`
+  - `net_xy = 3.9346 m`
+  - `path_len_xy = 4.7996 m`
+  - `cumulative_positive_dx = 3.9487 m`
+  - `cumulative_negative_dx = -0.0164 m`
+  - `reset_count = 0`
+- 结论：
+  - 机器人真实沿跑道前进。
+  - 横向漂移较小。
+  - 无摔倒、无越道重置。
+
+六、下午的关键尝试、失败与反思
+1) 失败尝试：只调奖励，不改观测
+- 表现：训练面板看起来“活得久”，但固定相机一看，常常只是原地晃动或慢慢偏出跑道。
+- 反思：如果 actor 看不到 lane 信息，单纯靠奖励很难学出稳定纠偏行为。
+
+2) 失败尝试：从已退化的 sprint checkpoint 继续训
+- 表现：策略会继承“快冲、漂移、超速”的旧习惯，后面越训越偏。
+- 反思：坏策略上的继续优化，会把新奖励拖进旧局部最优里。
+
+3) 失败尝试：从零开始直接训 sprint
+- 表现：越道问题压住后，反而出现高跌倒率，说明 gait 还没建立起来。
+- 反思：Step 2.2 的正确工程路线不是从零训练所有能力，而是基于已有稳定 locomotion 做任务迁移。
+
+4) 最终有效思路
+- 稳定 gait 迁移 + Oracle Lane 观测 + 净位移评估闭环。
+- 这一组合比“继续堆奖励项”有效得多，也更符合阶段 2 的目标定义。
+
+七、复现命令
+1) 训练（当前接受版本对应配置）
+- `cd /home/niumu/unitree_ws/src/unitree_rl_gym`
+- `python3 legged_gym/scripts/train.py --task=g1_sprint_track --num_envs=4096 --max_iterations=800 --headless --resume --resume_model_only --experiment_name=g1 --load_run=Feb04_22-36-49_g1_track_semantic_v3 --checkpoint=3000 --run_name=autoloop_r12_oracle_lane_transfer800`
+
+2) 回放检查
+- `cd /home/niumu/unitree_ws/src/unitree_rl_gym`
+- `python3 legged_gym/scripts/play.py --task=g1_sprint_track --num_envs=1 --experiment_name=g1 --load_run=Mar22_17-21-48_autoloop_r12_oracle_lane_transfer800 --checkpoint=50 --play_steps=1500 --record_play --record_camera_mode=fixed --record_dir=/tmp/check_r12_best`
+
+八、结论
+- Step 2.2 当前收口为：
+  - 在双倍长度跑道上，完成“低速稳定直线走”的速度课程阶段。
+- 这一步已经满足继续向后推进的前提。
+- 下一步建议：
+  1. 以 `r12/model_50.pt` 为起点做提速课程。
+  2. 在保持 Oracle Lane 观测有效的前提下，把目标速度从 `0.20~0.25 m/s` 逐步提高。
