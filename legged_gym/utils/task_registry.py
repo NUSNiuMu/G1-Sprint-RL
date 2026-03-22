@@ -12,6 +12,43 @@ from legged_gym import LEGGED_GYM_ROOT_DIR, LEGGED_GYM_ENVS_DIR
 from .helpers import get_args, update_cfg_from_args, class_to_dict, get_load_path, set_seed, parse_sim_params
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
+
+def _flexible_load_actor_critic(module, loaded_state_dict):
+    current_state = module.state_dict()
+    merged_state = {}
+    exact_keys = []
+    expanded_keys = []
+    skipped_keys = []
+
+    for key, current_tensor in current_state.items():
+        if key not in loaded_state_dict:
+            skipped_keys.append(key)
+            continue
+
+        loaded_tensor = loaded_state_dict[key]
+        if loaded_tensor.shape == current_tensor.shape:
+            merged_state[key] = loaded_tensor
+            exact_keys.append(key)
+            continue
+
+        if (
+            loaded_tensor.ndim == current_tensor.ndim
+            and loaded_tensor.ndim >= 2
+            and tuple(loaded_tensor.shape[:-1]) == tuple(current_tensor.shape[:-1])
+        ):
+            overlap = min(loaded_tensor.shape[-1], current_tensor.shape[-1])
+            patched_tensor = current_tensor.clone()
+            patched_tensor[..., :overlap] = loaded_tensor[..., :overlap]
+            merged_state[key] = patched_tensor
+            expanded_keys.append(key)
+            continue
+
+        skipped_keys.append(key)
+
+    current_state.update(merged_state)
+    module.load_state_dict(current_state, strict=False)
+    return exact_keys, expanded_keys, skipped_keys
+
 class TaskRegistry():
     """ 任务注册表类，用于管理、创建环境和训练算法。
     它负责存储环境类及其对应的配置，并提供统一的接口来实例化这些对象。
@@ -146,9 +183,18 @@ class TaskRegistry():
         if resume and resume_path is not None:
             # 加载之前训练的模型权重
             print(f"Loading model from: {resume_path}")
-            runner.load(resume_path, load_optimizer=not resume_model_only)
             if resume_model_only:
+                loaded_dict = torch.load(resume_path, map_location=args.rl_device)
+                exact_keys, expanded_keys, skipped_keys = _flexible_load_actor_critic(
+                    runner.alg.actor_critic, loaded_dict["model_state_dict"]
+                )
                 runner.current_learning_iteration = 0
+                print(
+                    "Model-only transfer load summary: "
+                    f"exact={len(exact_keys)}, expanded={len(expanded_keys)}, skipped={len(skipped_keys)}"
+                )
+            else:
+                runner.load(resume_path, load_optimizer=True)
 
         return runner, train_cfg
 
