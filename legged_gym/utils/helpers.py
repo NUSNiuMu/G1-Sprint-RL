@@ -149,6 +149,9 @@ def get_args():
         {"name": "--record_height", "type": int, "default": 540, "help": "Recorded video height for play."},
         {"name": "--record_interval", "type": int, "default": 2, "help": "Capture one video frame every N simulation steps during play."},
         {"name": "--record_camera_mode", "type": str, "default": "fixed", "help": "Camera mode for play recording: fixed or follow."},
+        {"name": "--show_sensor_view", "action": "store_true", "default": False, "help": "Show a live RGB-D sensor window during play (requires a task with camera enabled)."},
+        {"name": "--sensor_view_mode", "type": str, "default": "rgbd", "help": "Sensor preview mode during play: rgb, depth, or rgbd."},
+        {"name": "--sensor_view_scale", "type": int, "default": 4, "help": "Integer upscaling factor for the live sensor preview window."},
     ]
     # parse arguments
     args = gymutil.parse_arguments(

@@ -231,7 +231,7 @@ class G1SprintTrackRGBDCfg(G1SprintTrackCfg):
             enable_tensors = True
             export_rgb = True
             export_depth = True
-            local_pos = [0.12, 0.0, 0.02]
+            local_pos = [0.30, 0.0, 0.08]
             local_rot_euler_deg = [0.0, 0.0, 0.0]
 
 class G1SprintTrackRGBDCfgPPO(G1SprintTrackCfgPPO):

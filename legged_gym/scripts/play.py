@@ -13,6 +13,11 @@ import imageio.v2 as imageio
 import numpy as np
 import torch
 
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 
 def _prepare_record_dir(train_cfg, args):
     if args.record_dir is not None:
@@ -60,6 +65,42 @@ def _capture_camera_frame(env, camera_handle, camera_props):
     return image.reshape(camera_props.height, camera_props.width, 4)[:, :, :3].copy()
 
 
+def _sensor_preview_frame(env, args):
+    if not hasattr(env, "camera_rgb_buf") or env.camera_rgb_buf is None:
+        return None
+
+    mode = (args.sensor_view_mode or "rgbd").lower()
+    rgb = env.camera_rgb_buf[0].detach().cpu().numpy()
+    depth = env.camera_depth_buf[0].detach().cpu().numpy() if hasattr(env, "camera_depth_buf") and env.camera_depth_buf is not None else None
+
+    rgb_u8 = (255.0 * np.clip(rgb, 0.0, 1.0)).astype(np.uint8)
+    rgb_bgr = rgb_u8[:, :, ::-1]
+
+    depth_bgr = None
+    if depth is not None:
+        finite_depth = depth[np.isfinite(depth)]
+        if finite_depth.size == 0:
+            depth_preview = np.zeros_like(depth, dtype=np.uint8)
+        else:
+            max_depth = max(np.percentile(finite_depth, 95), 1e-3)
+            depth_preview = np.clip(depth / max_depth, 0.0, 1.0)
+            depth_preview = (255.0 * (1.0 - depth_preview)).astype(np.uint8)
+        depth_bgr = np.repeat(depth_preview[:, :, None], 3, axis=2)
+
+    if mode == "rgb":
+        frame = rgb_bgr
+    elif mode == "depth":
+        frame = depth_bgr if depth_bgr is not None else rgb_bgr
+    else:
+        frame = np.concatenate([rgb_bgr, depth_bgr], axis=1) if depth_bgr is not None else rgb_bgr
+
+    scale = max(1, int(args.sensor_view_scale))
+    if scale > 1:
+        frame = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+
+    return frame
+
+
 def play(args):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     if args.record_play:
@@ -94,6 +135,7 @@ def play(args):
     record_dir = None
     camera_handle = None
     camera_props = None
+    sensor_window_name = "G1 Sensor View"
     first_frame_saved = False
     last_frame = None
     positions = []
@@ -107,6 +149,13 @@ def play(args):
         writer = imageio.get_writer(record_dir / "play.mp4", fps=min(60, fps))
         print("Recording play evaluation to:", record_dir)
         print("Recording camera mode:", (args.record_camera_mode or "fixed").lower())
+
+    if args.show_sensor_view:
+        if cv2 is None:
+            raise RuntimeError("show_sensor_view requires OpenCV (cv2) to be installed.")
+        if not hasattr(env, "camera_rgb_buf") or env.camera_rgb_buf is None:
+            raise RuntimeError("show_sensor_view requires a task with camera enabled, e.g. g1_sprint_track_rgbd.")
+        cv2.namedWindow(sensor_window_name, cv2.WINDOW_NORMAL)
 
     for i in range(total_steps):
         positions.append(env.root_states[0, :3].detach().cpu().numpy().copy())
@@ -124,6 +173,13 @@ def play(args):
                     imageio.imwrite(record_dir / "frame_start.png", frame)
                     first_frame_saved = True
                 last_frame = frame
+
+        if args.show_sensor_view:
+            sensor_frame = _sensor_preview_frame(env, args)
+            if sensor_frame is not None:
+                cv2.imshow(sensor_window_name, sensor_frame)
+                if cv2.waitKey(1) & 0xFF == 27:
+                    break
 
         if 0 < i < stop_rew_log:
             if infos["episode"]:
@@ -207,6 +263,8 @@ def play(args):
             json.dump(trajectory_metrics, f, indent=2)
         writer.close()
         print("Saved play recording to:", record_dir)
+    if args.show_sensor_view and cv2 is not None:
+        cv2.destroyWindow(sensor_window_name)
 
 
 if __name__ == '__main__':
