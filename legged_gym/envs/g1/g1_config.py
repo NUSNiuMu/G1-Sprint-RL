@@ -215,4 +215,27 @@ class G1SprintTrackCfgPPO(G1RoughCfgPPO):
         experiment_name = "g1_sprint_track"
         policy_class_name = "ActorCriticRecurrent"
 
+class G1SprintTrackRGBDCfg(G1SprintTrackCfg):
+    class env(G1SprintTrackCfg.env):
+        num_envs = 64
+
+    class sensor(G1SprintTrackCfg.sensor):
+        class camera(G1SprintTrackCfg.sensor.camera):
+            enabled = True
+            attach_to_body = "head_link"
+            width = 84
+            height = 48
+            horizontal_fov_deg = 87.0
+            near_plane = 0.1
+            far_plane = 12.0
+            enable_tensors = True
+            export_rgb = True
+            export_depth = True
+            local_pos = [0.12, 0.0, 0.02]
+            local_rot_euler_deg = [0.0, 0.0, 0.0]
+
+class G1SprintTrackRGBDCfgPPO(G1SprintTrackCfgPPO):
+    class runner(G1SprintTrackCfgPPO.runner):
+        experiment_name = "g1_sprint_track_rgbd"
+
   

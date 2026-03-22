@@ -4,6 +4,7 @@ from legged_gym.envs.base.legged_robot import LeggedRobot
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
 import torch
+import numpy as np
 
 class G1Robot(LeggedRobot):
     
@@ -33,10 +34,6 @@ class G1Robot(LeggedRobot):
 
     def _init_foot(self):
         self.feet_num = len(self.feet_indices)
-        
-        rigid_body_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state)
-        self.rigid_body_states_view = self.rigid_body_states.view(self.num_envs, -1, 13)
         self.feet_state = self.rigid_body_states_view[:, self.feet_indices, :]
         self.feet_pos = self.feet_state[:, :, :3]
         self.feet_vel = self.feet_state[:, :, 7:10]
@@ -97,6 +94,9 @@ class G1Robot(LeggedRobot):
     def compute_observations(self):
         """ Computes observations
         """
+        if self._camera_enabled():
+            self._refresh_camera_observations()
+
         sin_phase = torch.sin(2 * np.pi * self.phase ).unsqueeze(1)
         cos_phase = torch.cos(2 * np.pi * self.phase ).unsqueeze(1)
         
@@ -127,58 +127,11 @@ class G1Robot(LeggedRobot):
             proprio_obs = torch.cat((proprio_obs, lane_obs), dim=-1)
             proprio_privileged = torch.cat((proprio_privileged, lane_obs), dim=-1)
 
-        # Add Noise to Proprio
-        if self.add_noise:
-            # We need to apply noise only to proprio part.
-            # However, self.noise_scale_vec (from _get_noise_scale_vec) might be full size (27695) or proprio size?
-            # _get_noise_scale_vec uses self.obs_buf[0] size.
-            # If obs_buf is 27695, then noise_vec is 27695.
-            # But the first "proprio_dim" elements are set.
-            # So if we add noise_vec, the 0s in visual part will ensure no noise on vision.
-            # BUT we haven't concatenated yet.
-            # So we should construct full obs first.
-            pass
-
-        # Camera Observations
-        visual_obs = None
-        if hasattr(self, 'camera_handles') and len(self.camera_handles) > 0:
-             visual_obs_list = []
-             for i in range(self.num_envs):
-                 # GPU tensor access failed, switching to CPU for robustness
-                 # cam_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_COLOR)
-                 # torch_cam = gymtorch.wrap_tensor(cam_tensor)
-                 
-                 image = self.gym.get_camera_image(self.sim, self.envs[i], self.camera_handles[i], gymapi.IMAGE_COLOR)
-                 if image.shape[0] == 0:
-                     # Rendering failed or not ready
-                     if i == 0 and self.common_step_counter % 100 == 0 and not hasattr(self, 'camera_warning_printed'):
-                         print("Warning: Camera image empty. Rendering might be disabled or failing. (Suppressing further warnings)")
-                         self.camera_warning_printed = True
-                     image = np.zeros((self.cfg.sensor.camera.height, self.cfg.sensor.camera.width, 4), dtype=np.uint8)
-                 else:
-                     image = image.reshape(self.cfg.sensor.camera.height, self.cfg.sensor.camera.width, 4)
-                     
-                 torch_cam = torch.from_numpy(image).to(self.device).float() / 255.0
-                 
-                 visual_obs_list.append(torch_cam[:, :, :3].reshape(-1))
-             
-             visual_obs = torch.stack(visual_obs_list)
-        
-        # Combine
-        # If no visual_obs, we might crash if config expects it. But let's assume we have it.
-        if visual_obs is not None:
-            self.obs_buf = torch.cat((proprio_obs, visual_obs), dim=-1)
-            self.privileged_obs_buf = torch.cat((proprio_privileged, visual_obs), dim=-1)
-        else:
-            self.obs_buf = proprio_obs
-            self.privileged_obs_buf = proprio_privileged
+        self.obs_buf = proprio_obs
+        self.privileged_obs_buf = proprio_privileged
 
         # Add Noise
         if self.add_noise:
-            # noise_scale_vec should match obs_buf size
-            if self.noise_scale_vec is None or self.noise_scale_vec.shape != self.obs_buf[0].shape:
-                 self.noise_scale_vec = self._get_noise_scale_vec(self.cfg)
-            
             self.obs_buf += (2 * torch.rand_like(self.obs_buf) - 1) * self.noise_scale_vec
 
         

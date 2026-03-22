@@ -169,6 +169,21 @@ class LeggedRobotCfg(BaseConfig):
             gravity = 0.05
             height_measurements = 0.1
 
+    class sensor:
+        class camera:
+            enabled = False
+            attach_to_body = "head_link"
+            width = 64
+            height = 48
+            horizontal_fov_deg = 87.0
+            near_plane = 0.1
+            far_plane = 10.0
+            enable_tensors = True
+            export_rgb = True
+            export_depth = True
+            local_pos = [0.10, 0.0, 0.03]
+            local_rot_euler_deg = [0.0, 0.0, 0.0]
+
     # viewer camera:
     class viewer:
         ref_env = 0

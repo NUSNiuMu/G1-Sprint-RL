@@ -1,0 +1,22 @@
+Step 3.1 RealSense RGB-D 观测接入报告
+
+本步骤完成了 G1 跑道任务的 RealSense 风格 RGB-D 传感器接入，新增了独立的 `g1_sprint_track_rgbd` 任务，并打通了以下能力：
+1. headless 模式下保留 graphics device，允许 camera sensor 正常渲染
+2. 为每个 env 创建 RGB-D 相机
+3. 从 GPU tensor 读取 RGB 与 Depth 缓冲区
+4. 导出内参、局部外参、投影矩阵、视图矩阵
+5. 提供单独的检查脚本 `humanoid_sprint/scripts/inspect_g1_rgbd.py`
+
+当前 smoke test 配置：
+- task：`g1_sprint_track_rgbd`
+- num_envs：2
+- num_steps：20
+- sim_device：`cuda:0`
+
+当前 smoke test 结果：
+- `camera_drop_counter_sum = 0`
+- `empty_rgb_steps_env0 = 0`
+- `empty_depth_steps_env0 = 0`
+
+结论：
+Step 3.1 已通过，可进入 Step 3.2 进行视觉编码器与本体状态融合。

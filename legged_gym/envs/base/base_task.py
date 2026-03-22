@@ -23,9 +23,14 @@ class BaseTask():
         else:
             self.device = 'cpu'
 
-        # graphics device for rendering, -1 for no rendering
+        # Camera sensors still require a graphics device even when no viewer window is created.
+        sensor_camera_enabled = (
+            hasattr(cfg, "sensor")
+            and hasattr(cfg.sensor, "camera")
+            and getattr(cfg.sensor.camera, "enabled", False)
+        )
         self.graphics_device_id = self.sim_device_id
-        if self.headless == True:
+        if self.headless and not sensor_camera_enabled:
             self.graphics_device_id = -1
 
         self.num_envs = cfg.env.num_envs

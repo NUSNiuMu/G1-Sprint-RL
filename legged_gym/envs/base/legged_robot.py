@@ -276,6 +276,170 @@ class LeggedRobot(BaseTask):
         cam_target = gymapi.Vec3(lookat[0], lookat[1], lookat[2])
         self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
 
+    def _camera_enabled(self):
+        return (
+            hasattr(self.cfg, "sensor")
+            and hasattr(self.cfg.sensor, "camera")
+            and getattr(self.cfg.sensor.camera, "enabled", False)
+        )
+
+    def _camera_local_transform(self):
+        camera_cfg = self.cfg.sensor.camera
+        transform = gymapi.Transform()
+        transform.p = gymapi.Vec3(*camera_cfg.local_pos)
+        roll, pitch, yaw = np.deg2rad(camera_cfg.local_rot_euler_deg)
+        transform.r = gymapi.Quat.from_euler_zyx(yaw, pitch, roll)
+        return transform
+
+    def _build_camera_intrinsics(self):
+        camera_cfg = self.cfg.sensor.camera
+        width = float(camera_cfg.width)
+        height = float(camera_cfg.height)
+        hfov = np.deg2rad(float(camera_cfg.horizontal_fov_deg))
+        fx = 0.5 * width / np.tan(0.5 * hfov)
+        vfov = 2.0 * np.arctan(np.tan(0.5 * hfov) * (height / width))
+        fy = 0.5 * height / np.tan(0.5 * vfov)
+        cx = 0.5 * (width - 1.0)
+        cy = 0.5 * (height - 1.0)
+        return torch.tensor(
+            [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]],
+            dtype=torch.float,
+            device=self.device,
+        )
+
+    def _init_camera_buffers(self):
+        if not self._camera_enabled():
+            self.camera_handles = []
+            self.camera_rgb_buf = None
+            self.camera_depth_buf = None
+            self.camera_intrinsics = None
+            self.camera_local_extrinsics = None
+            self.camera_drop_counter = None
+            return
+
+        camera_cfg = self.cfg.sensor.camera
+        self.camera_rgb_tensors = []
+        self.camera_depth_tensors = []
+        self.camera_drop_counter = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
+
+        for env_id in range(self.num_envs):
+            color_tensor = self.gym.get_camera_image_gpu_tensor(
+                self.sim, self.envs[env_id], self.camera_handles[env_id], gymapi.IMAGE_COLOR
+            )
+            depth_tensor = self.gym.get_camera_image_gpu_tensor(
+                self.sim, self.envs[env_id], self.camera_handles[env_id], gymapi.IMAGE_DEPTH
+            )
+            self.camera_rgb_tensors.append(gymtorch.wrap_tensor(color_tensor))
+            self.camera_depth_tensors.append(gymtorch.wrap_tensor(depth_tensor))
+
+        self.camera_rgb_buf = torch.zeros(
+            self.num_envs,
+            camera_cfg.height,
+            camera_cfg.width,
+            3,
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.camera_depth_buf = torch.zeros(
+            self.num_envs,
+            camera_cfg.height,
+            camera_cfg.width,
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.camera_intrinsics = self._build_camera_intrinsics()
+        local_transform = self._camera_local_transform()
+        self.camera_local_offset = torch.tensor(
+            [local_transform.p.x, local_transform.p.y, local_transform.p.z],
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.camera_local_rotation = torch.tensor(
+            [local_transform.r.x, local_transform.r.y, local_transform.r.z, local_transform.r.w],
+            dtype=torch.float,
+            device=self.device,
+        )
+        self.camera_local_forward = quat_apply(
+            self.camera_local_rotation.unsqueeze(0),
+            torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float, device=self.device),
+        ).squeeze(0)
+        self.camera_local_extrinsics = torch.tensor(
+            [
+                local_transform.p.x,
+                local_transform.p.y,
+                local_transform.p.z,
+                local_transform.r.x,
+                local_transform.r.y,
+                local_transform.r.z,
+                local_transform.r.w,
+            ],
+            dtype=torch.float,
+            device=self.device,
+        )
+
+    def _update_attached_cameras(self):
+        if not self._camera_enabled():
+            return
+
+        for env_id in range(self.num_envs):
+            body_handle = self.camera_body_handles[env_id]
+            body_pos = self.rigid_body_states_view[env_id, body_handle, 0:3].unsqueeze(0)
+            body_quat = self.rigid_body_states_view[env_id, body_handle, 3:7].unsqueeze(0)
+            eye_t = body_pos + quat_apply(body_quat, self.camera_local_offset.unsqueeze(0))
+            forward_t = quat_apply(body_quat, self.camera_local_forward.unsqueeze(0))
+            target_t = eye_t + forward_t
+            eye = gymapi.Vec3(*eye_t.squeeze(0).detach().cpu().tolist())
+            target = gymapi.Vec3(*target_t.squeeze(0).detach().cpu().tolist())
+            self.gym.set_camera_location(self.camera_handles[env_id], self.envs[env_id], eye, target)
+
+    def _refresh_camera_observations(self):
+        if not self._camera_enabled():
+            return
+
+        self._update_attached_cameras()
+        self.gym.step_graphics(self.sim)
+        self.gym.render_all_camera_sensors(self.sim)
+        self.gym.start_access_image_tensors(self.sim)
+        try:
+            for env_id in range(self.num_envs):
+                color = self.camera_rgb_tensors[env_id]
+                depth = self.camera_depth_tensors[env_id]
+
+                if color.ndim == 2 and color.shape[-1] == self.cfg.sensor.camera.width * 4:
+                    color = color.view(self.cfg.sensor.camera.height, self.cfg.sensor.camera.width, 4)
+                if color.ndim == 3 and color.shape[-1] >= 3:
+                    self.camera_rgb_buf[env_id] = color[..., :3].float() / 255.0
+                else:
+                    self.camera_rgb_buf[env_id].zero_()
+                    self.camera_drop_counter[env_id] += 1
+
+                if depth.ndim == 2:
+                    depth_frame = depth
+                else:
+                    depth_frame = depth.view(self.cfg.sensor.camera.height, self.cfg.sensor.camera.width)
+                depth_frame = torch.nan_to_num(depth_frame, nan=self.cfg.sensor.camera.far_plane, posinf=self.cfg.sensor.camera.far_plane)
+                self.camera_depth_buf[env_id] = torch.clamp(-depth_frame.float(), min=0.0, max=self.cfg.sensor.camera.far_plane)
+        finally:
+            self.gym.end_access_image_tensors(self.sim)
+
+    def get_camera_metadata(self, env_id=0):
+        if not self._camera_enabled():
+            return None
+        proj = np.array(self.gym.get_camera_proj_matrix(self.sim, self.envs[env_id], self.camera_handles[env_id])).tolist()
+        view = np.array(self.gym.get_camera_view_matrix(self.sim, self.envs[env_id], self.camera_handles[env_id])).tolist()
+        return {
+            "width": int(self.cfg.sensor.camera.width),
+            "height": int(self.cfg.sensor.camera.height),
+            "horizontal_fov_deg": float(self.cfg.sensor.camera.horizontal_fov_deg),
+            "near_plane": float(self.cfg.sensor.camera.near_plane),
+            "far_plane": float(self.cfg.sensor.camera.far_plane),
+            "attach_to_body": str(self.cfg.sensor.camera.attach_to_body),
+            "intrinsics": self.camera_intrinsics.detach().cpu().tolist() if self.camera_intrinsics is not None else None,
+            "local_extrinsics": self.camera_local_extrinsics.detach().cpu().tolist() if self.camera_local_extrinsics is not None else None,
+            "proj_matrix": proj,
+            "view_matrix": view,
+        }
+
     #------------- Callbacks --------------
     def _process_rigid_shape_props(self, props, env_id):
         """ Callback allowing to store/change/randomize the rigid shape properties of each environment.
@@ -516,13 +680,16 @@ class LeggedRobot(BaseTask):
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
         net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
+        rigid_body_state_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
         self.gym.refresh_dof_state_tensor(self.sim)
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         # create some wrapper tensors for different slices
         self.root_states = gymtorch.wrap_tensor(actor_root_state)
-
+        self.rigid_body_states = gymtorch.wrap_tensor(rigid_body_state_tensor)
+        self.rigid_body_states_view = self.rigid_body_states.view(self.num_envs, -1, 13)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 0]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dof, 2)[..., 1]
@@ -568,6 +735,7 @@ class LeggedRobot(BaseTask):
         self.finish_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.last_track_local_x = self.root_states[:, 0] - self.env_origins[:, 0]
         self.last_lane_abs_error = torch.abs(self.root_states[:, 1] - self.env_origins[:, 1] - self.env_lane_center_y)
+        self._init_camera_buffers()
       
 
         # joint positions offsets and PD gains
@@ -729,6 +897,8 @@ class LeggedRobot(BaseTask):
         env_upper = gymapi.Vec3(0., 0., 0.)
         self.actor_handles = []
         self.envs = []
+        self.camera_handles = []
+        self.camera_body_handles = []
         
         for i in range(self.num_envs):
             # create env instance
@@ -764,6 +934,22 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
+
+            if self._camera_enabled():
+                camera_cfg = self.cfg.sensor.camera
+                camera_props = gymapi.CameraProperties()
+                camera_props.width = int(camera_cfg.width)
+                camera_props.height = int(camera_cfg.height)
+                camera_props.horizontal_fov = float(camera_cfg.horizontal_fov_deg)
+                camera_props.near_plane = float(camera_cfg.near_plane)
+                camera_props.far_plane = float(camera_cfg.far_plane)
+                camera_props.enable_tensors = bool(camera_cfg.enable_tensors)
+                camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
+                body_handle = self.gym.find_actor_rigid_body_handle(env_handle, actor_handle, camera_cfg.attach_to_body)
+                if body_handle < 0:
+                    raise ValueError(f"Camera attach body '{camera_cfg.attach_to_body}' not found in asset.")
+                self.camera_handles.append(camera_handle)
+                self.camera_body_handles.append(body_handle)
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
