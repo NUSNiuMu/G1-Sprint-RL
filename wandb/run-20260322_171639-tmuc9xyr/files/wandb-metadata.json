@@ -1,0 +1,52 @@
+{
+  "os":  "Linux-5.15.0-67-generic-x86_64-with-glibc2.10",
+  "python":  "CPython 3.8.19",
+  "startedAt":  "2026-03-22T09:16:39.812639Z",
+  "args":  [
+    "--task=g1_sprint_track",
+    "--num_envs=4096",
+    "--max_iterations=800",
+    "--headless",
+    "--resume",
+    "--resume_model_only",
+    "--experiment_name=g1",
+    "--load_run=Feb04_22-36-49_g1_track_semantic_v3",
+    "--checkpoint=3000",
+    "--run_name=autoloop_r11_transfer_lane_divergence800"
+  ],
+  "program":  "legged_gym/scripts/train.py",
+  "codePath":  "legged_gym/scripts/train.py",
+  "codePathLocal":  "legged_gym/scripts/train.py",
+  "git":  {
+    "remote":  "git@github.com:NUSNiuMu/G1-Sprint-RL.git",
+    "commit":  "3d621a92a9b3ffdceb395669ffc9c6e37a147977"
+  },
+  "email":  "niumu023@gmail.com",
+  "root":  "/home/niumu/unitree_ws/src/unitree_rl_gym",
+  "host":  "niumu-Legion-R9000P-ARX8",
+  "executable":  "/home/niumu/anaconda3/envs/unitree-rl/bin/python",
+  "cpu_count":  16,
+  "cpu_count_logical":  32,
+  "gpu":  "NVIDIA GeForce RTX 4060 Laptop GPU",
+  "gpu_count":  1,
+  "disk":  {
+    "/":  {
+      "total":  "88461090816",
+      "used":  "72082370560"
+    }
+  },
+  "memory":  {
+    "total":  "33321541632"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce RTX 4060 Laptop GPU",
+      "memoryTotal":  "8585740288",
+      "cudaCores":  3072,
+      "architecture":  "Ada",
+      "uuid":  "GPU-a40a5188-3efc-6b72-8234-e0f68ee07efb"
+    }
+  ],
+  "cudaVersion":  "12.8",
+  "writerId":  "zr9hdyviau2b4dtiaum7hc69iaap7b95"
+}
