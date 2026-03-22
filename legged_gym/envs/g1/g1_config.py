@@ -155,7 +155,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         heading_command = False
         resampling_time = 10.0
         class ranges(G1RoughCfg.commands.ranges):
-            lin_vel_x = [0.42, 0.52]
+            lin_vel_x = [0.58, 0.72]
             lin_vel_y = [0.0, 0.0]
             ang_vel_yaw = [0.0, 0.0]
             heading = [0.0, 0.0]
@@ -173,7 +173,7 @@ class G1SprintTrackCfg(G1RoughCfg):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.78
         class scales(G1RoughCfg.rewards.scales):
-            tracking_lin_vel = 0.8
+            tracking_lin_vel = 1.2
             tracking_ang_vel = 1.2
             lin_vel_z = -2.0
             ang_vel_xy = -0.05
@@ -192,10 +192,10 @@ class G1SprintTrackCfg(G1RoughCfg):
             heading_error = -1.2
             yaw_rate = -1.0
             lateral_velocity = -1.0
-            track_progress = 5.6
-            stalling = -5.0
-            overspeed = -14.0
-            finish_bonus = 70.0
+            track_progress = 6.4
+            stalling = -6.0
+            overspeed = -18.0
+            finish_bonus = 80.0
             alive = 0.03
             hip_pos = -1.0
             contact_no_vel = -0.2
