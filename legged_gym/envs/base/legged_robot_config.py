@@ -55,6 +55,10 @@ class LeggedRobotCfg(BaseConfig):
             lane_mark_height = 0.005
             semantic_enabled = True
             semantic_boundary_tol = 0.03
+            terminate_on_out_of_track = False
+            out_of_track_margin = 0.0
+            success_on_reach_lane_end = False
+            lane_end_success_margin = 0.0
 
     class commands:
         curriculum = False

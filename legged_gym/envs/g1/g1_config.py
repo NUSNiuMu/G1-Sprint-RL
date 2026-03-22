@@ -118,6 +118,11 @@ class G1SprintTrackCfg(G1RoughCfg):
         # Keep each env visually separated in the global viewer.
         env_spacing = 14.0
 
+    class viewer(G1RoughCfg.viewer):
+        ref_env = 0
+        pos = [-2.5, -1.5, 1.8]
+        lookat = [1.5, 0.0, 0.8]
+
     class terrain(G1RoughCfg.terrain):
         mesh_type = "plane"
         curriculum = False
@@ -135,6 +140,10 @@ class G1SprintTrackCfg(G1RoughCfg):
             separator_width = 0.04
             curb_height = 0.025
             lane_mark_height = 0.006
+            terminate_on_out_of_track = True
+            out_of_track_margin = 0.02
+            success_on_reach_lane_end = True
+            lane_end_success_margin = 0.15
 
     class commands(G1RoughCfg.commands):
         heading_command = False
@@ -176,6 +185,7 @@ class G1SprintTrackCfg(G1RoughCfg):
             heading_error = -1.0
             yaw_rate = -0.8
             lateral_velocity = -0.8
+            finish_bonus = 30.0
             alive = 0.15
             hip_pos = -1.0
             contact_no_vel = -0.2

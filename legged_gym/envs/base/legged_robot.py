@@ -128,7 +128,29 @@ class LeggedRobot(BaseTask):
         """
         self.contact_termination_buf = torch.any(torch.norm(self.contact_forces[:, self.termination_contact_indices, :], dim=-1) > 1., dim=1)
         self.attitude_termination_buf = torch.logical_or(torch.abs(self.rpy[:,1])>1.0, torch.abs(self.rpy[:,0])>0.8)
+        self.track_termination_buf[:] = False
+        self.finish_termination_buf[:] = False
         self.reset_buf = self.contact_termination_buf | self.attitude_termination_buf
+        if self.track_layout is not None:
+            local_x = self.base_pos[:, 0] - self.env_origins[:, 0]
+            local_y = self.base_pos[:, 1] - self.env_origins[:, 1]
+            half_length = 0.5 * self.track_layout["lane_length"]
+            margin = float(self.cfg.terrain.track.out_of_track_margin)
+            in_lateral = torch.logical_and(
+                local_y >= (self.track_layout["left_boundary"] + margin),
+                local_y <= (self.track_layout["right_boundary"] - margin),
+            )
+            if self.cfg.terrain.track.success_on_reach_lane_end:
+                finish_margin = float(self.cfg.terrain.track.lane_end_success_margin)
+                safe_finish = ~(self.contact_termination_buf | self.attitude_termination_buf)
+                self.finish_termination_buf = (local_x >= (half_length - finish_margin)) & in_lateral & safe_finish
+            if self.cfg.terrain.track.terminate_on_out_of_track:
+                past_track_end = local_x > half_length
+                before_track_start = local_x < -half_length
+                self.track_termination_buf = (~in_lateral) | past_track_end | before_track_start
+                self.track_termination_buf &= ~self.finish_termination_buf
+                self.reset_buf |= self.track_termination_buf
+            self.reset_buf |= self.finish_termination_buf
         self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
         self.reset_buf |= self.time_out_buf
 
@@ -169,8 +191,10 @@ class LeggedRobot(BaseTask):
         ep_steps = torch.clamp(self.metric_episode_steps[env_ids], min=1.0)
         self.extras["episode"]["metric_speed_mps"] = torch.mean(self.metric_speed_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_collision_rate"] = torch.mean(self.metric_collision_steps[env_ids] / ep_steps)
-        self.extras["episode"]["metric_fall_rate"] = torch.mean((~self.time_out_buf[env_ids]).float())
-        self.extras["episode"]["metric_success_rate"] = torch.mean(self.time_out_buf[env_ids].float())
+        self.extras["episode"]["metric_fall_rate"] = torch.mean((self.contact_termination_buf[env_ids] | self.attitude_termination_buf[env_ids]).float())
+        self.extras["episode"]["metric_success_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
+        self.extras["episode"]["metric_finish_rate"] = torch.mean(self.finish_termination_buf[env_ids].float())
+        self.extras["episode"]["metric_out_of_track_fail_rate"] = torch.mean(self.track_termination_buf[env_ids].float())
         self.extras["episode"]["metric_torque_utilization"] = torch.mean(self.metric_torque_util_sum[env_ids] / ep_steps)
         self.extras["episode"]["metric_torque_violation_rate"] = torch.mean(self.metric_torque_violation_steps[env_ids] / ep_steps)
         self.extras["episode"]["metric_lane_violation_rate"] = torch.mean(self.metric_lane_violation_steps[env_ids] / ep_steps)
@@ -536,6 +560,8 @@ class LeggedRobot(BaseTask):
         self.track_semantic_id_buf = torch.zeros(self.num_envs, dtype=torch.long, device=self.device, requires_grad=False)
         self.contact_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
         self.attitude_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.track_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
+        self.finish_termination_buf = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device, requires_grad=False)
       
 
         # joint positions offsets and PD gains
@@ -884,7 +910,7 @@ class LeggedRobot(BaseTask):
     
     def _reward_termination(self):
         # Terminal reward / penalty
-        return self.reset_buf * ~self.time_out_buf
+        return self.reset_buf * ~(self.time_out_buf | self.finish_termination_buf)
     
     def _reward_dof_pos_limits(self):
         # Penalize dof positions too close to the limit
@@ -975,3 +1001,7 @@ class LeggedRobot(BaseTask):
         """Penalize sideways drift across the lane."""
         local_vy = self.root_states[:, 8]
         return torch.square(local_vy)
+
+    def _reward_finish_bonus(self):
+        """Give a one-time bonus only when the robot safely reaches the lane end."""
+        return self.finish_termination_buf.float()
