@@ -197,6 +197,12 @@ class G1SprintTrackCfg(G1RoughCfg):
             contact = 0.18
 
 class G1SprintTrackCfgPPO(G1RoughCfgPPO):
+    class policy(G1RoughCfgPPO.policy):
+        init_noise_std = 0.3
+
+    class algorithm(G1RoughCfgPPO.algorithm):
+        entropy_coef = 0.0005
+
     class runner(G1RoughCfgPPO.runner):
         experiment_name = "g1_sprint_track"
         policy_class_name = "ActorCriticRecurrent"
